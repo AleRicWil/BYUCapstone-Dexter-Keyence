@@ -1,0 +1,12 @@
+*.png
+useful-commands
+png-conversion/generated-csvs/
+png-conversion/keyence-csvs/
+png-conversion/pngs/
+zachs-venv-windows/
+.myenv-windows/
+.vscode
+__pycache__
+.venv*
+*.swp
+open3d_env
