@@ -42,5 +42,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main()
+    main(filename='RealScans\ArmTest1.csv')
     
