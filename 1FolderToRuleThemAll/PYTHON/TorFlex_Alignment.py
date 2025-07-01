@@ -218,7 +218,7 @@ class Torsion_Arm_LJS640:
             scale_factors = np.where(z <= 0, 0.2, 0.2 + xScaleSlope*z)
             x *= scale_factors
 
-            valid_mask = (x > -1000) & (x < 1000) & (z >= cutOff[0]) & (z <= cutOff[1])
+            valid_mask = (x > -100) & (x < 100) & (z >= cutOff[0]) & (z <= cutOff[1])
             x = x[valid_mask]
             y = y[valid_mask]
             z = z[valid_mask]
@@ -310,7 +310,7 @@ class Torsion_Arm_LJS640:
         starting_point = self.bar_faces_highest_point
         delta = self.cloud.T - starting_point
         s = delta @ approx_axis
-        distance_threshold = -100
+        distance_threshold = -145
         mask = (s <= distance_threshold)
         spindle_half = self.cloud.T[mask, :]
         if show:
@@ -342,10 +342,10 @@ class Torsion_Arm_LJS640:
             points_bin = spindle_bounded[mask]
             
             # Project points in bin onto the plane orthogonal to bar axis
-            p_2d = np.dot(points_bin, np.array([u, v]).T)
-            maxC = np.max(p_2d)
-            A = np.hstack([p_2d, np.ones((len(p_2d), 1))])
-            b = -(p_2d[:, 0]**2 + p_2d[:, 1]**2)
+            points_2d = np.dot(points_bin, np.array([u, v]).T)
+            maxC = np.max(points_2d)
+            A = np.hstack([points_2d, np.ones((len(points_2d), 1))])
+            b = -(points_2d[:, 0]**2 + points_2d[:, 1]**2)
             
             # Fit a circle to projected points and record its center in global 3D frame
             try:
@@ -354,21 +354,25 @@ class Torsion_Arm_LJS640:
                 discriminant = a**2 + b**2 - 4*c
                 if discriminant > 0:
                     center_2d = [-a / 2, -b / 2]
-                    t_center = (bin_edges[i] + bin_edges[i + 1]) / 2
-                    center_3d = t_center * approx_axis + center_2d[0] * u + center_2d[1] * v
-                    centers.append(center_3d)
                     radius = np.sqrt((a/2)**2 + (b/2)**2 - c)
+                    residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
+                    rmse = np.sqrt(np.mean(residuals**2))
+                    if rmse < 0.3:
+                        t_center = (bin_edges[i] + bin_edges[i + 1]) / 2
+                        center_3d = t_center * approx_axis + center_2d[0] * u + center_2d[1] * v
+                        centers.append(center_3d)
+                    print(f'Slice {i} with rmse {rmse}')
             except np.linalg.LinAlgError:
                 continue
-            if plot and i < 10:
-                self.show_cloud(points_bin.T)
+            if plot:# and i < 10:
+                # self.show_cloud(points_bin.T)
                 theta = np.linspace(0, 2 * np.pi, 100)
                 x_circle = center_2d[0] + radius * np.cos(theta)
                 y_circle = center_2d[1] + radius * np.sin(theta)
                 plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
-                plt.scatter(p_2d[:, 0], p_2d[:, 1], s=1)
+                plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
                 plt.scatter(center_2d[0], center_2d[1])
-                plt.title(f"Projected Point {c}")
+                plt.title(f"Projected Slice {i}")
                 plt.xlim(-maxC, maxC)
                 plt.ylim(-maxC, maxC)
                 plt.axis('equal')
@@ -376,19 +380,29 @@ class Torsion_Arm_LJS640:
                 plt.ylabel("v-axis")
                 plt.show()
         
-        # Fit a line along circle centers and note its direction as spindle axis
+        # Fit a line to 3D centers and evaluate fit quality
         if len(centers) < 2:
             raise ValueError("Not enough valid circle fits to determine the axis.")
         centers = np.array(centers)
         c_axis = np.mean(centers, axis=0)
-        cov = np.cov(centers - c_axis, rowvar=False)
-        eigvals, eigvecs = np.linalg.eigh(cov)
-        axis_dir = eigvecs[:, np.argmax(eigvals)]
+        # PCA for line direction
+        U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
+        axis_dir = Vt[0]  # Principal component (largest singular value)
         if np.dot(axis_dir, approx_axis) < 0:
             axis_dir = -axis_dir
+        # Calculate fit quality (RMSE of perpendicular distances)
+        projections = np.dot(centers - c_axis, axis_dir)
+        points_on_line = c_axis + np.outer(projections, axis_dir)
+        distances = np.linalg.norm(centers - points_on_line, axis=1)
+        rmse = np.sqrt(np.mean(distances**2))
+        print(rmse)
         self.axis_loc = c_axis
         self.spindle_axis = axis_dir
         self.spindle_cloud = spindle_bounded.T
+        self.line_fit_rmse = rmse  # Store fit quality
+        if show:
+            pcd = Numpy_to_Open3D(self.spindle_cloud)
+            visualize_axis(pcd, c_axis, axis_dir, length=100)
 
     def calc_angles(self):
         B = np.array(self.bar_axis) / np.linalg.norm(self.bar_axis)
