@@ -297,7 +297,17 @@ class Torsion_Arm_LJS640:
         if show:
             self.show_cloud(np.hstack((self.barPrimaryFace, self.barSecondaryFace)))
 
-    def fit_spindle(self, num_bins=20, min_points_per_bin=10, show=False, plot=False):
+    def fit_spindle(self, axial_cutoff=-145, num_bins=20, circle_fit_tol=0.3, show=False, plot=False):
+        '''
+        Parameters:
+            axial_cutoff: value above which all points are the spindle. Discards dogbone and bar below
+            num_bins: number of segments to slice spindle into
+            circle_fit_tol: upper (root mean square error) tolerance for accepting a slice's center 
+                            based on how tightly the points fit a circle
+            show: flag to display regions of scan while algorithm finds spindle and axis
+            plot: flag to display each slice's projected circle fit
+        '''
+        min_points_per_bin=10
         '''Start of finding spindle within cloud'''
         # Set up frame based on bar axis
         approx_axis = self.bar_axis
@@ -316,8 +326,7 @@ class Torsion_Arm_LJS640:
         starting_point = self.bar_faces_highest_point
         delta = self.cloud.T - starting_point
         s = delta @ approx_axis
-        distance_threshold = -100
-        mask = (s <= distance_threshold)
+        mask = (s <= axial_cutoff)
         spindle_half = self.cloud.T[mask, :]
         if show:
             self.show_cloud(spindle_half.T)
@@ -341,6 +350,7 @@ class Torsion_Arm_LJS640:
         t_min, t_max = np.min(t), np.max(t)
         bin_edges = np.linspace(t_min, t_max, num_bins + 1)
         centers = []
+        count = 0
         for i in range(num_bins):
             mask = (t >= bin_edges[i]) & (t < bin_edges[i + 1])
             if np.sum(mask) < min_points_per_bin:
@@ -363,11 +373,11 @@ class Torsion_Arm_LJS640:
                     radius = np.sqrt((a/2)**2 + (b/2)**2 - c)
                     residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
                     rmse = np.sqrt(np.mean(residuals**2))
-                    if rmse < 0.1:
+                    if rmse < circle_fit_tol:
+                        count += 1
                         t_center = (bin_edges[i] + bin_edges[i + 1]) / 2
                         center_3d = t_center * approx_axis + center_2d[0] * u + center_2d[1] * v
                         centers.append(center_3d)
-                    print(f'Slice {i} with rmse {rmse}')
             except np.linalg.LinAlgError:
                 continue
             if plot:# and i < 10:
@@ -378,7 +388,7 @@ class Torsion_Arm_LJS640:
                 plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
                 plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
                 plt.scatter(center_2d[0], center_2d[1])
-                plt.title(f"Projected Slice {i}")
+                plt.title(f"Projected Slice {i}. rmse: {rmse}")
                 plt.xlim(-maxC, maxC)
                 plt.ylim(-maxC, maxC)
                 plt.axis('equal')
@@ -390,6 +400,7 @@ class Torsion_Arm_LJS640:
         if len(centers) < 2:
             raise ValueError("Not enough valid circle fits to determine the axis.")
         centers = np.array(centers)
+        print(f'Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
         c_axis = np.mean(centers, axis=0)
         # PCA for line direction
         U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
@@ -401,7 +412,7 @@ class Torsion_Arm_LJS640:
         points_on_line = c_axis + np.outer(projections, axis_dir)
         distances = np.linalg.norm(centers - points_on_line, axis=1)
         rmse = np.sqrt(np.mean(distances**2))
-        print(rmse)
+        print(f'Axis fit rmse: {rmse}')
         self.axis_loc = c_axis
         self.spindle_axis = axis_dir
         self.spindle_cloud = spindle_bounded.T
