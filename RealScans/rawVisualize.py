@@ -291,7 +291,7 @@ if __name__ == "__main__":
     # scan1 = Load_Scan('Keyence Scans\Week Trial\FlatPlate\8201\8-201_1.csv', maxPoints=10000000, cutOff=[-150,-131])
     # scan1 = Home_On_Hub(scan1, radius=150)
     # Plot_Cloud(scan1, plotNum=1)
-    scan1 = Load_Scan(r'arm.csv', maxPoints=11000000, cutOff=[-500, 500])
+    scan1 = Load_Scan(r'RealScans\SpindleScan01.csv', maxPoints=11000000, cutOff=[-500, 500])
     Plot_Cloud_PyVista(scan1, pointSize=0.2)
 
     # create_gif_from_pngs(
