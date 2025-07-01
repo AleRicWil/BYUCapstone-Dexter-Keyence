@@ -236,6 +236,9 @@ class Torsion_Arm_LJS640:
         centroid_xy = [np.mean(self.cloud[0]), np.mean(self.cloud[1])]
         self.cloud = self.cloud - np.array([centroid_xy[0], centroid_xy[1], 0])[:, np.newaxis]
 
+    def rotate_cloud(self, axis, angle):
+        self.cloud = Rotate(self.cloud, axis, angle)
+
     def trim_cloud_z(self, cutOff=[-500, 500]):
         valid_mask = (self.cloud[2] >= cutOff[0]) & (self.cloud[2] <= cutOff[1])
         myCloud = self.cloud[:, valid_mask]

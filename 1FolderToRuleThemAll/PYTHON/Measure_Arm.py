@@ -15,6 +15,8 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # Prepare data
     scan1.center_cloud()
     scan1.show_cloud()
+    scan1.rotate_cloud(axis='z', angle=90)
+    scan1.show_cloud()
 
     # Find bar faces
     scan1.fit_bar_faces(plotNum=0, show=True)
