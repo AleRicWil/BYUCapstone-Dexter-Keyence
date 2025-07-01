@@ -258,8 +258,8 @@ if __name__ == '__main__':
     myProfiles = []
     myTrueProfiles = []
     numPositions = 3
-    numProfiles = 501
-    numPoints = 501
+    numProfiles = 801
+    numPoints = 801
     railView = 30    # degrees. Angular span of rail
     scanView = 15                                                           
     alphas = np.linspace(railView*np.pi/180, -railView*np.pi/180, numPositions)  # horizontal angles to position scanner
