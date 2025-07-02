@@ -25,7 +25,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # print(f'Bar Axis: {scan1.bar_axis}')
 
     # Find spindle
-    scan1.fit_spindle(axial_cutoff=-145, num_bins=100, circle_fit_tol=0.2, show=False, plot=False)
+    scan1.fit_spindle(axial_cutoff=-150, num_bins=100, circle_fit_tol=0.25, show=True, plot=True)
     # print(f'Spindle Axis: {scan1.axis_dir}')
 
     scan1.calc_angles()
@@ -44,5 +44,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\ArmTest1.csv')
+    main(filename=r'RealScans\CollarScan10.csv')
     

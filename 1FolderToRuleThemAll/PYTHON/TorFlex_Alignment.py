@@ -216,7 +216,7 @@ class Torsion_Arm_LJS640:
             scale_factors = np.where(z <= 0, 0.2, 0.2 + xScaleSlope*z)
             x *= scale_factors
 
-            valid_mask = (x > cutOff[2]) & (x < cutOff[3]) & (x > cutOff[4]) & (x < cutOff[5]) & (z >= cutOff[0]) & (z <= cutOff[1])
+            valid_mask = (x > cutOff[2]) & (x < cutOff[3]) & (y > cutOff[4]) & (y < cutOff[5]) & (z >= cutOff[0]) & (z <= cutOff[1])
             x = x[valid_mask]
             y = y[valid_mask]
             z = z[valid_mask]

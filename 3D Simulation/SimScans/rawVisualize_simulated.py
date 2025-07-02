@@ -232,60 +232,60 @@ def Plot_Cloud_PyVista(points, pointSize=1.0):
 # import imageio.v3 as iio
 # import os
 
-def create_gif_from_pngs(folder_path, output_gif_path="output.gif", frame_rate=1):
-    """
-    Create an animated GIF from all PNG files in a specified folder.
+# def create_gif_from_pngs(folder_path, output_gif_path="output.gif", frame_rate=1):
+#     """
+#     Create an animated GIF from all PNG files in a specified folder.
     
-    Parameters:
-    - folder_path (str): Path to the folder containing PNG files
-    - output_gif_path (str): Path where the GIF will be saved (default: "output.gif")
-    - frame_rate (float): Frames per second for the GIF (default: 1 FPS)
-    """
-    # Check if folder exists
-    if not os.path.exists(folder_path):
-        print(f"Error: Folder '{folder_path}' does not exist")
-        return
+#     Parameters:
+#     - folder_path (str): Path to the folder containing PNG files
+#     - output_gif_path (str): Path where the GIF will be saved (default: "output.gif")
+#     - frame_rate (float): Frames per second for the GIF (default: 1 FPS)
+#     """
+#     # Check if folder exists
+#     if not os.path.exists(folder_path):
+#         print(f"Error: Folder '{folder_path}' does not exist")
+#         return
     
-    # Get all PNG files in the folder
-    png_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.png')]
-    if not png_files:
-        print(f"Error: No PNG files found in '{folder_path}'")
-        return
+#     # Get all PNG files in the folder
+#     png_files = [f for f in os.listdir(folder_path) if f.lower().endswith('.png')]
+#     if not png_files:
+#         print(f"Error: No PNG files found in '{folder_path}'")
+#         return
     
-    # Sort files alphabetically to maintain consistent order
-    png_files.sort()
+#     # Sort files alphabetically to maintain consistent order
+#     png_files.sort()
     
-    # Calculate duration per frame (in seconds)
-    duration = 1.0 / frame_rate
+#     # Calculate duration per frame (in seconds)
+#     duration = 1.0 / frame_rate
     
-    # Read all images into a list
-    images = []
-    for png_file in png_files:
-        file_path = os.path.join(folder_path, png_file)
-        try:
-            image = iio.imread(file_path)
-            images.append(image)
-            print(f"Loaded: {png_file}")
-        except Exception as e:
-            print(f"Error loading {png_file}: {str(e)}")
+#     # Read all images into a list
+#     images = []
+#     for png_file in png_files:
+#         file_path = os.path.join(folder_path, png_file)
+#         try:
+#             image = iio.imread(file_path)
+#             images.append(image)
+#             print(f"Loaded: {png_file}")
+#         except Exception as e:
+#             print(f"Error loading {png_file}: {str(e)}")
     
-    # Save as GIF
-    if images:
-        # Add reverse sequence (excluding the last frame to avoid double-playing it)
-        full_sequence = images + images[-2::-1]
-        try:
-            iio.imwrite(
-                output_gif_path,
-                full_sequence,
-                duration=duration,
-                loop=0  # 0 means loop forever
-            )
-            print(f"GIF saved as '{output_gif_path}' with {frame_rate} FPS "
-                  f"({len(images)} frames)")
-        except Exception as e:
-            print(f"Error saving GIF: {str(e)}")
-    else:
-        print("No images were loaded successfully")
+#     # Save as GIF
+#     if images:
+#         # Add reverse sequence (excluding the last frame to avoid double-playing it)
+#         full_sequence = images + images[-2::-1]
+#         try:
+#             iio.imwrite(
+#                 output_gif_path,
+#                 full_sequence,
+#                 duration=duration,
+#                 loop=0  # 0 means loop forever
+#             )
+#             print(f"GIF saved as '{output_gif_path}' with {frame_rate} FPS "
+#                   f"({len(images)} frames)")
+#         except Exception as e:
+#             print(f"Error saving GIF: {str(e)}")
+#     else:
+#         print("No images were loaded successfully")
 
 if __name__ == "__main__":
     # scan1 = Load_Scan('Keyence Scans\Week Trial\FlatPlate\8201\8-201_1.csv', maxPoints=10000000, cutOff=[-150,-131])
