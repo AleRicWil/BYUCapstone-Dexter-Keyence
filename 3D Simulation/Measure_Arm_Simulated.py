@@ -24,7 +24,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # print(f'Bar Axis: {scan1.bar_axis}')
 
     # Find spindle
-    scan1.fit_spindle(num_bins=100, show=True, plot=False)
+    scan1.fit_spindle(axial_cutoff=-150, num_bins=100, circle_fit_tol=0.02, show=False, plot=False)
     # print(f'Spindle Axis: {scan1.axis_dir}')
 
     scan1.calc_angles()
