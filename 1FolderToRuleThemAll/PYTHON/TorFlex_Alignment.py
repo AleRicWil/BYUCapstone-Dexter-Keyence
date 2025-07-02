@@ -183,7 +183,7 @@ class Torsion_Arm_LJS640:
         self.ledgeThreshold = 0.1
         self.barFaceRadius = 120
         self.minPoints = 10000
-        self.anglePoints = 2000
+        self.anglePoints = 5000
         self.norm_tolerance_deg = 10.0
         self.dist_tolerange_mm = 15.0
         self.max_x_width = 640
@@ -411,7 +411,7 @@ class Torsion_Arm_LJS640:
         self.line_fit_rmse = rmse  # Store fit quality
         if show:
             pcd = Numpy_to_Open3D(self.spindle_cloud)
-            visualize_axis(pcd, c_axis, axis_dir, length=100)
+            # visualize_axis(pcd, c_axis, axis_dir, length=100)
 
     def calc_angles(self):
         B = np.array(self.bar_axis) / np.linalg.norm(self.bar_axis)
@@ -845,12 +845,12 @@ def Bound_Spindle_2D(plane_points, show=False):
         for cluster in combined_clusters:
             if len(cluster) > 0:
                 center = np.mean(cluster, axis=0)
-                plt.scatter(center[0], center[1], c='red', s=50)
+                # plt.scatter(center[0], center[1], c='red', s=50)
         plt.xlabel("u-axis")
         plt.ylabel("v-axis")
         plt.axis('equal')
         plt.legend()
-        plt.show()
+        # plt.show()
 
     plane_spindle = max(combined_clusters, key=len)
     return plane_spindle
