@@ -10,7 +10,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # Load arm scan
     index = 3
     scan1 = Torsion_Arm_LJS640(filename, view_angle_horizontal=45, scanType='live',
-                               cutOff=[-500, 500, -500, 500, -500, 500] # z, x, y min & max
+                               cutOff=[-500, 500, -185, 500, -500, 500] # z, x, y min & max
                                )
     # scan1.show_cloud()
 
@@ -25,7 +25,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # print(f'Bar Axis: {scan1.bar_axis}')
 
     # Find spindle
-    scan1.fit_spindle(axial_cutoff=-150, num_bins=100, circle_fit_tol=0.25, show=True, plot=True)
+    scan1.fit_spindle(axial_cutoff=-85, num_bins=100, circle_fit_tol=0.15, show=True, plot=False)
     # print(f'Spindle Axis: {scan1.axis_dir}')
 
     scan1.calc_angles()
@@ -44,5 +44,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\CollarScan10.csv')
+    main(filename=r'RealScans\RotatedScan01.csv')
     
