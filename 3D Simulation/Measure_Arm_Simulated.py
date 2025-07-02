@@ -15,7 +15,8 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # Prepare data
     scan1.center_cloud()
     scan1.show_cloud()
-    scan1.rotate_cloud(axis='z', angle=180)
+    scan1.rotate_cloud(axis='z', angle=-90)
+    scan1.rotate_cloud(axis='x', angle=0)
     scan1.show_cloud()
 
     # Find bar faces
@@ -42,5 +43,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename='3D Simulation/SimScans/CrankArm45up.txt', scan_type='sim')
+    main(filename='3D Simulation\SimScans\CrankArm45up_1deg.txt', scan_type='sim')
     
