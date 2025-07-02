@@ -10,15 +10,15 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # Load arm scan
     index = 3
     scan1 = Torsion_Arm_LJS640(filename, view_angle_horizontal=45, scanType='live',
-                               cutOff=[-500, 500, -100, 100, -500, 500] # z, x, y min & max
+                               cutOff=[-500, 500, -500, 500, -500, 500] # z, x, y min & max
                                )
     # scan1.show_cloud()
 
     # Prepare data
     scan1.center_cloud()
     scan1.show_cloud()
-    scan1.rotate_cloud(axis='z', angle=90)
-    scan1.show_cloud()
+    # scan1.rotate_cloud(axis='z', angle=90)
+    # scan1.show_cloud()
 
     # Find bar faces
     scan1.fit_bar_faces(plotNum=0, show=True)
