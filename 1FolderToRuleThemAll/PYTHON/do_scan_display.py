@@ -4,9 +4,11 @@ import matplotlib.pyplot as plt
 from Perform_Scan_LJS640 import perform_scan
 import pyvista as pv
 
-def main(temp_path=None):
-    if temp_path==None:
-        temp_path = r'C:\Users\Public\CapstoneUI\temporary_scan.csv'
+def main(filename=None):
+    if filename==None:
+        temp_path = r'C:\Users\Public\CapstoneUI\TempScans\temporary_scan.csv'
+    else:
+        temp_path = fr'C:\Users\Public\CapstoneUI\TempScans\{filename}.csv'
 
     data = perform_scan().astype(float)
 
@@ -112,4 +114,4 @@ def Plot_Cloud_PyVista(points, pointSize=1.0):
 
 
 if __name__ == "__main__":
-    main()
+    main(filename=r'testscan')
