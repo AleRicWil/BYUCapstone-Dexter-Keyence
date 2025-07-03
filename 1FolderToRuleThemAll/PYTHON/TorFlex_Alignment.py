@@ -411,7 +411,38 @@ class Torsion_Arm_LJS640:
         self.line_fit_rmse = rmse  # Store fit quality
         if show:
             pcd = Numpy_to_Open3D(self.spindle_cloud)
-            # visualize_axis(pcd, c_axis, axis_dir, length=100)
+            #visualize_axis(pcd, c_axis, axis_dir, length=100)
+
+    def visualize_axes(self, length=0.1):
+        # Red
+        origin_x = o3d.geometry.LineSet()
+        origin_x.points = o3d.utility.Vector3dVector([[0, 0, 0], [10, 0, 0]])
+        origin_x.lines = o3d.utility.Vector2iVector([[0, 1]])
+        origin_x.colors = o3d.utility.Vector3dVector([[1, 0, 0]])
+
+        # Green
+        origin_y = o3d.geometry.LineSet()
+        origin_y.points = o3d.utility.Vector3dVector([[0, 0, 0], [0, 10, 0]])
+        origin_y.lines = o3d.utility.Vector2iVector([[0, 1]])
+        origin_y.colors = o3d.utility.Vector3dVector([[0, 1, 0]])
+
+        # Blue
+        origin_z = o3d.geometry.LineSet()
+        origin_z.points = o3d.utility.Vector3dVector([[0, 0, 0], [0, 0, 10]])
+        origin_z.lines = o3d.utility.Vector2iVector([[0, 1]])
+        origin_z.colors = o3d.utility.Vector3dVector([[0, 0, 1]])
+
+        spindle_pcd = Numpy_to_Open3D(self.spindle_cloud)
+        bar_pcd = Numpy_to_Open3D(self.bar_faces)
+
+        # Spindle Axis
+        spindle_points = np.array([self.axis_loc - length * self.spindle_axis, self.axis_loc + length * self.spindle_axis])
+        spindle_axis = o3d.geometry.LineSet()
+        spindle_axis.points = o3d.utility.Vector3dVector(spindle_points)
+        spindle_axis.lines = o3d.utility.Vector2iVector([[0, 1]])
+        spindle_axis.colors = o3d.utility.Vector3dVector([[1, 0, 0]])
+
+        o3d.visualization.draw_geometries([spindle_pcd, bar_pcd, origin_x, origin_y, origin_z])
 
     def calc_angles(self):
         B = np.array(self.bar_axis) / np.linalg.norm(self.bar_axis)
