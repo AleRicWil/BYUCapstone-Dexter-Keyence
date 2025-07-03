@@ -4,7 +4,10 @@ import matplotlib.pyplot as plt
 from Perform_Scan_LJS640 import perform_scan
 import pyvista as pv
 
-def main():
+def main(temp_path=None):
+    if temp_path==None:
+        temp_path = r'C:\Users\Public\CapstoneUI\temporary_scan.csv'
+
     data = perform_scan().astype(float)
 
     for i in data:
@@ -46,6 +49,9 @@ def main():
     x = x[valid_mask]
     y = y[valid_mask]
     z = z[valid_mask]
+
+    # Save Scan
+    np.savetxt(temp_path, data, delimiter=',', header='X Y Z')
 
     # Combine into a single array
     # cloud = np.stack((x, y, z), axis=0)
