@@ -236,15 +236,6 @@ class Torsion_Arm_LJS640:
 
     def rotate_cloud(self, axis, angle):
         self.cloud = Rotate(self.cloud, axis, angle)
-
-    def trim_cloud_z(self, cutOff=[-500, 500]):
-        valid_mask = (self.cloud[2] >= cutOff[0]) & (self.cloud[2] <= cutOff[1])
-        myCloud = self.cloud[:, valid_mask]
-        if myCloud.shape[1] >= self.minPoints:
-            self.cloud = myCloud
-            self.numPoints = self.cloud.shape[1]
-        else:    
-            print(f'Trimming Error: Less than {self.minPoints} points in trimmed cloud. Returning untrimmed cloud')
         
     def show_cloud(self, altCloud=0):
         if isinstance(altCloud, int):
@@ -252,9 +243,9 @@ class Torsion_Arm_LJS640:
         else:
             Plot_Cloud_PyVista(altCloud, pointSize=0.5)
 
-    def fit_bar_faces(self, plotNum=0, show=False):
-        barCloud = self.cloud
-        # self.show_cloud(barCloud)
+    def fit_bar_faces(self, cutOff=[-500, 500], plotNum=0, show=False):
+        barCloud = Trim_Cloud(self.cloud, 'Y', cutOff)
+        #self.show_cloud(barCloud)
 
         # Find primary face
         barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)
@@ -468,6 +459,24 @@ class Torsion_Arm_LJS640:
         print(f'Relative Angle:\t{self.relative_angle}')
         print(f'Total Angle:\t{self.total_angle:.4f}')
 
+def Trim_Cloud(cloud, direction, cutOff=[-500,500], minPoints=10000):
+    untrimmed_cloud = cloud
+    if direction == 'X':
+        index = 0
+    elif direction == 'Y':
+        index = 1
+    elif direction == 'Z':
+        index = 2
+    else:
+        print(f'Trimming Error: Invalid direction slection, returning untrimmed cloud')
+        return untrimmed_cloud
+
+    valid_mask = (cloud[index] >= cutOff[0]) & (cloud[index] <= cutOff[1])
+    cloud = cloud[:, valid_mask]
+    if cloud.shape[1] >= minPoints:
+        return cloud
+    else:
+        print(f'Trimming Error: {cloud.shape[1]} points less than {minPoints} points in trimmed cloud. Returning untrimmed cloud')
 
 def Numpy_to_Open3D(cloud):
     pcd = o3d.geometry.PointCloud()
