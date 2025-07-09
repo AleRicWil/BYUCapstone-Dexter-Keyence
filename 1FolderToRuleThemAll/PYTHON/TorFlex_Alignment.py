@@ -392,6 +392,7 @@ class Torsion_Arm_LJS640:
         if len(centers) < 2:
             raise ValueError("Not enough valid circle fits to determine the axis.")
         centers = np.array(centers)
+        np.savetxt(r'C:\Users\Public\CapstoneUI\centers.csv', centers, delimiter=',', header='X Y Z')
         print(f'Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
         c_axis = np.mean(centers, axis=0)
         # PCA for line direction
