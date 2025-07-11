@@ -236,15 +236,6 @@ class Torsion_Arm_LJS640:
 
     def rotate_cloud(self, axis, angle):
         self.cloud = Rotate(self.cloud, axis, angle)
-
-    def trim_cloud_z(self, cutOff=[-500, 500]):
-        valid_mask = (self.cloud[2] >= cutOff[0]) & (self.cloud[2] <= cutOff[1])
-        myCloud = self.cloud[:, valid_mask]
-        if myCloud.shape[1] >= self.minPoints:
-            self.cloud = myCloud
-            self.numPoints = self.cloud.shape[1]
-        else:    
-            print(f'Trimming Error: Less than {self.minPoints} points in trimmed cloud. Returning untrimmed cloud')
         
     def show_cloud(self, altCloud=0):
         if isinstance(altCloud, int):
@@ -252,9 +243,9 @@ class Torsion_Arm_LJS640:
         else:
             Plot_Cloud_PyVista(altCloud, pointSize=0.5)
 
-    def fit_bar_faces(self, plotNum=0, show=False):
-        barCloud = self.cloud
-        # self.show_cloud(barCloud)
+    def fit_bar_faces(self, cutOff=[-500, 500], plotNum=0, show=False):
+        barCloud = Trim_Cloud(self.cloud, 'Y', cutOff)
+        #self.show_cloud(barCloud)
 
         # Find primary face
         barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)
@@ -392,6 +383,7 @@ class Torsion_Arm_LJS640:
         if len(centers) < 2:
             raise ValueError("Not enough valid circle fits to determine the axis.")
         centers = np.array(centers)
+        np.savetxt(r'C:\Users\Public\CapstoneUI\centers.csv', centers, delimiter=',', header='X Y Z')
         print(f'Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
         c_axis = np.mean(centers, axis=0)
         # PCA for line direction
@@ -411,7 +403,38 @@ class Torsion_Arm_LJS640:
         self.line_fit_rmse = rmse  # Store fit quality
         if show:
             pcd = Numpy_to_Open3D(self.spindle_cloud)
-            # visualize_axis(pcd, c_axis, axis_dir, length=100)
+            #visualize_axis(pcd, c_axis, axis_dir, length=100)
+
+    def visualize_axes(self, length=0.1):
+        # Red
+        origin_x = o3d.geometry.LineSet()
+        origin_x.points = o3d.utility.Vector3dVector([[0, 0, 0], [10, 0, 0]])
+        origin_x.lines = o3d.utility.Vector2iVector([[0, 1]])
+        origin_x.colors = o3d.utility.Vector3dVector([[1, 0, 0]])
+
+        # Green
+        origin_y = o3d.geometry.LineSet()
+        origin_y.points = o3d.utility.Vector3dVector([[0, 0, 0], [0, 10, 0]])
+        origin_y.lines = o3d.utility.Vector2iVector([[0, 1]])
+        origin_y.colors = o3d.utility.Vector3dVector([[0, 1, 0]])
+
+        # Blue
+        origin_z = o3d.geometry.LineSet()
+        origin_z.points = o3d.utility.Vector3dVector([[0, 0, 0], [0, 0, 10]])
+        origin_z.lines = o3d.utility.Vector2iVector([[0, 1]])
+        origin_z.colors = o3d.utility.Vector3dVector([[0, 0, 1]])
+
+        spindle_pcd = Numpy_to_Open3D(self.spindle_cloud)
+        bar_pcd = Numpy_to_Open3D(self.bar_faces)
+
+        # Spindle Axis
+        spindle_points = np.array([self.axis_loc - length * self.spindle_axis, self.axis_loc + length * self.spindle_axis])
+        spindle_axis = o3d.geometry.LineSet()
+        spindle_axis.points = o3d.utility.Vector3dVector(spindle_points)
+        spindle_axis.lines = o3d.utility.Vector2iVector([[0, 1]])
+        spindle_axis.colors = o3d.utility.Vector3dVector([[1, 0, 0]])
+
+        o3d.visualization.draw_geometries([spindle_pcd, bar_pcd, origin_x, origin_y, origin_z])
 
     def calc_angles(self):
         B = np.array(self.bar_axis) / np.linalg.norm(self.bar_axis)
@@ -436,6 +459,24 @@ class Torsion_Arm_LJS640:
         print(f'Relative Angle:\t{self.relative_angle}')
         print(f'Total Angle:\t{self.total_angle:.4f}')
 
+def Trim_Cloud(cloud, direction, cutOff=[-500,500], minPoints=10000):
+    untrimmed_cloud = cloud
+    if direction == 'X':
+        index = 0
+    elif direction == 'Y':
+        index = 1
+    elif direction == 'Z':
+        index = 2
+    else:
+        print(f'Trimming Error: Invalid direction slection, returning untrimmed cloud')
+        return untrimmed_cloud
+
+    valid_mask = (cloud[index] >= cutOff[0]) & (cloud[index] <= cutOff[1])
+    cloud = cloud[:, valid_mask]
+    if cloud.shape[1] >= minPoints:
+        return cloud
+    else:
+        print(f'Trimming Error: {cloud.shape[1]} points less than {minPoints} points in trimmed cloud. Returning untrimmed cloud')
 
 def Numpy_to_Open3D(cloud):
     pcd = o3d.geometry.PointCloud()
