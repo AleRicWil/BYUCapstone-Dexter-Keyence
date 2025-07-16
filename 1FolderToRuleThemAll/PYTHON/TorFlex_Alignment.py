@@ -405,6 +405,183 @@ class Torsion_Arm_LJS640:
             pcd = Numpy_to_Open3D(self.spindle_cloud)
             #visualize_axis(pcd, c_axis, axis_dir, length=100)
 
+    def fit_spindle2(self, axial_cutoff=-145, num_bins=20, circle_fit_tol=0.3, circle_resid_tol=[1.0], min_fit_points=200, centers_resid_tol=[1.0], show=False, plot=False):
+        '''
+        Parameters:
+            axial_cutoff: value above which all points are the spindle. Discards dogbone and bar below
+            num_bins: number of segments to slice spindle into
+            circle_fit_tol: upper (root mean square error) tolerance for accepting a slice's center 
+                            based on how tightly the points fit a circle
+            show: flag to display regions of scan while algorithm finds spindle and axis
+            plot: flag to display each slice's projected circle fit
+        '''
+        min_points_per_bin=10
+        '''Start of finding spindle within cloud'''
+        # Set up frame based on bar axis
+        approx_axis = self.bar_axis
+        if abs(approx_axis[0]) < min(abs(approx_axis[1]), abs(approx_axis[2])):
+            u = np.array([1, 0, 0])
+        elif abs(approx_axis[1]) < abs(approx_axis[2]):
+            u = np.array([0, 1, 0])
+        else:
+            u = np.array([0, 0, 1])
+        u = u - np.dot(u, approx_axis) * approx_axis
+        u = u / np.linalg.norm(u)
+        v = np.cross(approx_axis, u)
+        
+        # Select half of scan which includes spindle
+            # Calculate distances along axis from starting_point
+        starting_point = self.bar_faces_highest_point
+        delta = self.cloud.T - starting_point
+        s = delta @ approx_axis
+        mask = (s <= axial_cutoff)
+        spindle_half = self.cloud.T[mask, :]
+        if show:
+            self.show_cloud(spindle_half.T)
+        
+        # Separate spindle from other objects
+            # Project all points onto plane orthogonal to bar axis and find spindle
+        plane_points = np.dot(spindle_half, np.array([u, v]).T)
+        plane_spindle = Bound_Spindle_2D(plane_points, show=show)
+        
+        # Map planar spindle points back to original 3D cloud
+        plane_points = np.dot(spindle_half, np.array([u, v]).T)  # Recalculate plane_points
+        # Create a mask for points in plane_spindle
+        mask = np.isin(plane_points, plane_spindle).all(axis=1)
+        spindle_bounded = spindle_half[mask]
+        if show:
+            self.show_cloud(spindle_bounded.T)
+        '''End of finding spindle within cloud'''
+        ''''Start of fitting axis to spindle'''
+        # Project spindle points onto bar axis and slice into bins
+        t = np.dot(spindle_bounded, approx_axis)
+        t_min, t_max = np.min(t), np.max(t)
+        bin_edges = np.linspace(t_min, t_max, num_bins + 1)
+        centers = []
+        count = 0
+        plt.clf()
+        for i in range(num_bins):
+            mask = (t >= bin_edges[i]) & (t < bin_edges[i + 1])
+            if np.sum(mask) < min_points_per_bin:
+                continue
+            points_bin = spindle_bounded[mask]
+            
+            def fit_circle(points_2d):
+                maxC = np.max(points_2d)
+                A = np.hstack([points_2d, np.ones((len(points_2d), 1))])
+                b = -(points_2d[:, 0]**2 + points_2d[:, 1]**2)
+
+                # Fit a circle to projected points and record its center in global 3D frame
+                try:
+                    abc = np.linalg.lstsq(A, b, rcond=None)[0]
+                    a, b, c = abc
+                    discriminant = a**2 + b**2 - 4*c
+                    if discriminant > 0:
+                        center_2d = [-a / 2, -b / 2]
+                        radius = np.sqrt((a/2)**2 + (b/2)**2 - c)
+                except np.linalg.LinAlgError:
+                    return 0, 0, -1
+
+                return center_2d, maxC, radius
+
+            def filter_circle(points, center, iqr_scale):
+                radii = np.sqrt((points[:, 0] - center[0])**2 + (points[:, 1] - center[1])**2)
+                Q1, Q3 = np.percentile(radii, [25, 75])
+                IQR = Q3 - Q1
+                lower_bound = Q1 - iqr_scale * IQR
+                upper_bound = Q3 + iqr_scale * IQR
+                filtered_points = points[(radii >= lower_bound) & (radii <= upper_bound), :]
+                return filtered_points
+
+            filt_points = points_bin.T
+            points_2d = np.dot(filt_points.T, np.array([u, v]).T)
+            for j, iqr_scale in enumerate(circle_resid_tol):
+                center_2d, maxC, radius = fit_circle(points_2d)
+                if (radius < 0):
+                    continue
+
+                points_2d = filter_circle(points_2d, center_2d, iqr_scale)
+
+                if self.ui:
+                    self.ui.log_message(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points")
+                else:
+                    print(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points")
+
+                residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
+                rmse = np.sqrt(np.mean(residuals**2))
+
+                if plot:# and i < 10:
+                    # self.show_cloud(points_bin.T)
+                    theta = np.linspace(0, 2 * np.pi, 100)
+                    x_circle = center_2d[0] + radius * np.cos(theta)
+                    y_circle = center_2d[1] + radius * np.sin(theta)
+                    plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
+                    plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
+                    plt.scatter(center_2d[0], center_2d[1])
+                    plt.title(f"Projected Slice {i}. Iteration {j}. rmse: {rmse}")
+                    plt.xlim(-maxC, maxC)
+                    plt.ylim(-maxC, maxC)
+                    plt.axis('equal')
+                    plt.xlabel("u-axis")
+                    plt.ylabel("v-axis")
+                    plt.show() 
+
+            if points_2d.shape[0] >= min_fit_points:
+                residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
+                rmse = np.sqrt(np.mean(residuals**2))
+                if rmse < circle_fit_tol:
+                    count += 1
+                    t_center = (bin_edges[i] + bin_edges[i + 1]) / 2
+                    center_3d = t_center * approx_axis + center_2d[0] * u + center_2d[1] * v
+                    centers.append(center_3d)
+
+        def filter_centers(centers, iqr_scale):
+                c_axis = np.mean(centers, axis=0)
+                U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
+                axis_dir = Vt[0]
+                if np.dot(axis_dir, approx_axis) < 0:
+                    axis_dir = -axis_dir
+                projections = np.dot(centers - c_axis, axis_dir)
+                points_on_line = c_axis + np.outer(projections, axis_dir)
+                distances = np.linalg.norm(centers - points_on_line, axis=1)
+
+                Q1, Q3 = np.percentile(distances, [25, 75])
+                IQR = Q3 - Q1
+                lower_bound = Q1 - iqr_scale * IQR
+                upper_bound = Q3 + iqr_scale * IQR
+                filtered_centers = centers[(distances >= lower_bound) & (distances <= upper_bound), :]
+                return filtered_centers
+        
+        if len(centers) < 2:
+                raise ValueError("Not enough valid circle fits to determine the axis.")
+        centers = np.array(centers)
+        np.savetxt(r'C:\Users\Public\CapstoneUI\centers.csv', centers, delimiter=',', header='X Y Z')
+
+        for i in enumerate(centers_resid_tol):
+            centers = filter_centers(centers, 1.0)
+            np.savetxt(r'C:\Users\Public\CapstoneUI\centersFiltered.csv', centers, delimiter=',', header='X Y Z')
+
+        print(f'Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
+        c_axis = np.mean(centers, axis=0)
+        # PCA for line direction
+        U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
+        axis_dir = Vt[0]  # Principal component (largest singular value)
+        if np.dot(axis_dir, approx_axis) < 0:
+            axis_dir = -axis_dir
+        # Calculate fit quality (RMSE of perpendicular distances)
+        projections = np.dot(centers - c_axis, axis_dir)
+        points_on_line = c_axis + np.outer(projections, axis_dir)
+        distances = np.linalg.norm(centers - points_on_line, axis=1)
+        rmse = np.sqrt(np.mean(distances**2))
+        print(f'Axis fit rmse: {rmse}')
+        self.axis_loc = c_axis
+        self.spindle_axis = axis_dir
+        self.spindle_cloud = spindle_bounded.T
+        self.line_fit_rmse = rmse  # Store fit quality
+        if show:
+            pcd = Numpy_to_Open3D(self.spindle_cloud)
+            visualize_axis(pcd, c_axis, axis_dir, length=100)
+
     def visualize_axes(self, length=0.1):
         # Red
         origin_x = o3d.geometry.LineSet()
@@ -587,6 +764,7 @@ def Normal_of_Rotated_Plane(axis, angle):
     return normalized_normal
 
 def Calc_Plane(points, title=0, plotNum=0, numPoints=1000, ui=None):
+    # Shrinks points to fewer points
     sampled_indices = np.linspace(0, points.shape[1] - 1, numPoints, dtype=int)
     sampled_points = points[:, sampled_indices]
     if ui:
