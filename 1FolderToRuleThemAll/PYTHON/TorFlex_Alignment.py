@@ -503,14 +503,14 @@ class Torsion_Arm_LJS640:
                 points_2d = filter_circle(points_2d, center_2d, iqr_scale)
 
                 if self.ui:
-                    self.ui.log_message(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points")
+                    self.ui.log_message(f"\tSlice {i + 1} Iteration {j}: filtering {points_2d.shape[0]} points")
                 else:
-                    print(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points")
+                    print(f"\tSlice {i + 1} Iteration {j}: filtering {points_2d.shape[0]} points")
 
                 residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
                 rmse = np.sqrt(np.mean(residuals**2))
 
-                if plot:# and i < 10:
+                if plot and i % 10 == 0:
                     # self.show_cloud(points_bin.T)
                     theta = np.linspace(0, 2 * np.pi, 100)
                     x_circle = center_2d[0] + radius * np.cos(theta)
@@ -518,7 +518,7 @@ class Torsion_Arm_LJS640:
                     plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
                     plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
                     plt.scatter(center_2d[0], center_2d[1])
-                    plt.title(f"Projected Slice {i}. Iteration {j}. rmse: {rmse}")
+                    plt.title(f"Projected Slice {i + 1}: Iteration: {j}, rmse: {rmse:.4f}, IQR Scale = {iqr_scale}")
                     plt.xlim(-maxC, maxC)
                     plt.ylim(-maxC, maxC)
                     plt.axis('equal')
@@ -536,32 +536,50 @@ class Torsion_Arm_LJS640:
                     centers.append(center_3d)
 
         def filter_centers(centers, iqr_scale):
-                c_axis = np.mean(centers, axis=0)
-                U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
-                axis_dir = Vt[0]
-                if np.dot(axis_dir, approx_axis) < 0:
-                    axis_dir = -axis_dir
-                projections = np.dot(centers - c_axis, axis_dir)
-                points_on_line = c_axis + np.outer(projections, axis_dir)
-                distances = np.linalg.norm(centers - points_on_line, axis=1)
+            c_axis = np.mean(centers, axis=0)
+            U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
+            axis_dir = Vt[0]
+            if np.dot(axis_dir, approx_axis) < 0:
+                axis_dir = -axis_dir
+            projections = np.dot(centers - c_axis, axis_dir)
+            points_on_line = c_axis + np.outer(projections, axis_dir)
+            distances = np.linalg.norm(centers - points_on_line, axis=1)
+            rmse = np.sqrt(np.mean(distances**2))
 
-                Q1, Q3 = np.percentile(distances, [25, 75])
-                IQR = Q3 - Q1
-                lower_bound = Q1 - iqr_scale * IQR
-                upper_bound = Q3 + iqr_scale * IQR
-                filtered_centers = centers[(distances >= lower_bound) & (distances <= upper_bound), :]
-                return filtered_centers
+            Q1, Q3 = np.percentile(distances, [25, 75])
+            IQR = Q3 - Q1
+            lower_bound = Q1 - iqr_scale * IQR
+            upper_bound = Q3 + iqr_scale * IQR
+            filtered_centers = centers[(distances >= lower_bound) & (distances <= upper_bound), :]
+            return filtered_centers, rmse
         
         if len(centers) < 2:
                 raise ValueError("Not enough valid circle fits to determine the axis.")
         centers = np.array(centers)
         np.savetxt(r'C:\Users\Public\CapstoneUI\centers.csv', centers, delimiter=',', header='X Y Z')
 
-        for i in enumerate(centers_resid_tol):
-            centers = filter_centers(centers, 1.0)
+        for i, iqr_scale in enumerate(centers_resid_tol):
+            centers, rmse = filter_centers(centers, iqr_scale)
+            print(f'Iteration {i + 1}: Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
             np.savetxt(r'C:\Users\Public\CapstoneUI\centersFiltered.csv', centers, delimiter=',', header='X Y Z')
 
-        print(f'Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
+            if plot:
+                plt.clf()
+                plt.title(f"Iteration: {i}, rmse: {rmse:.4f}, IQR Scale: {iqr_scale}")
+                plt.subplot(211)
+                plt.scatter(centers[:, 1], centers[:, 0])
+                plt.xlim(np.min(centers[:, 1]) - 1, np.max(centers[:, 1]))
+                plt.ylabel("x-axis")
+
+                plt.subplot(212)
+                plt.scatter(centers[:, 1], centers[:, 2])
+                plt.xlim(np.min(centers[:, 1]) - 1, np.max(centers[:, 1]))
+                plt.xlabel("y-axis")
+                plt.ylabel("z-axis")
+
+                plt.tight_layout()
+                plt.show()
+
         c_axis = np.mean(centers, axis=0)
         # PCA for line direction
         U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
