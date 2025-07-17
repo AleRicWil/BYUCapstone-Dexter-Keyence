@@ -503,9 +503,9 @@ class Torsion_Arm_LJS640:
                 points_2d = filter_circle(points_2d, center_2d, iqr_scale)
 
                 if self.ui:
-                    self.ui.log_message(f"\tSlice {i + 1} Iteration {j}: filtering {points_2d.shape[0]} points")
+                    self.ui.log_message(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points")
                 else:
-                    print(f"\tSlice {i + 1} Iteration {j}: filtering {points_2d.shape[0]} points")
+                    print(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points")
 
                 residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
                 rmse = np.sqrt(np.mean(residuals**2))
@@ -518,13 +518,14 @@ class Torsion_Arm_LJS640:
                     plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
                     plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
                     plt.scatter(center_2d[0], center_2d[1])
-                    plt.title(f"Projected Slice {i + 1}: Iteration: {j}, rmse: {rmse:.4f}, IQR Scale = {iqr_scale}")
+                    plt.title(f"Projected Slice {i}: Iteration: {j}, rmse: {rmse:.4f}, Points: {points_2d.shape[0]}")
+                    plt.figtext(0.25, 0.0, f"IQR Scale: {iqr_scale}, Center = ({center_2d[0]}, {center_2d[1]})")
                     plt.xlim(-maxC, maxC)
                     plt.ylim(-maxC, maxC)
                     plt.axis('equal')
                     plt.xlabel("u-axis")
                     plt.ylabel("v-axis")
-                    plt.show() 
+                    # plt.show() 
 
             if points_2d.shape[0] >= min_fit_points:
                 residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
@@ -535,50 +536,44 @@ class Torsion_Arm_LJS640:
                     center_3d = t_center * approx_axis + center_2d[0] * u + center_2d[1] * v
                     centers.append(center_3d)
 
-        def filter_centers(centers, iqr_scale):
-            c_axis = np.mean(centers, axis=0)
-            U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
-            axis_dir = Vt[0]
-            if np.dot(axis_dir, approx_axis) < 0:
-                axis_dir = -axis_dir
-            projections = np.dot(centers - c_axis, axis_dir)
-            points_on_line = c_axis + np.outer(projections, axis_dir)
-            distances = np.linalg.norm(centers - points_on_line, axis=1)
-            rmse = np.sqrt(np.mean(distances**2))
+        def filter_centers(centers, direction, iqr_scale, plot=False):
+            if direction == "x":
+                index = 0
+            elif direction == "z":
+                index = 2
+            
+            trend = np.polyfit(centers[:, 1], centers[:, index], 1)
+
+            if plot:
+                plt.clf()
+                plt.title(f"Iteration: {i}, IQR Scale: {iqr_scale}")
+                plt.scatter(centers[:, 1], centers[:, index])
+                plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend[0] * np.min(centers[:, 1]) + trend[1], trend[0] * np.max(centers[:, 1]) + trend[1]], 
+                         linestyle='dashed', color='r')
+                plt.xticks(np.linspace(np.min(centers[:, 1]), np.max(centers[:, 1]), 7))
+                plt.yticks(np.linspace(np.min(centers[:, index]), np.max(centers[:, index]), 5))
+                plt.ylabel(f"{direction}-axis")
+                plt.xlabel("y-axis")
+                plt.show()
+
+            distances = centers[:, index] - (trend[0] * centers[:, 1] + trend[1])
 
             Q1, Q3 = np.percentile(distances, [25, 75])
             IQR = Q3 - Q1
             lower_bound = Q1 - iqr_scale * IQR
             upper_bound = Q3 + iqr_scale * IQR
             filtered_centers = centers[(distances >= lower_bound) & (distances <= upper_bound), :]
-            return filtered_centers, rmse
+            return filtered_centers, trend
         
         if len(centers) < 2:
                 raise ValueError("Not enough valid circle fits to determine the axis.")
         centers = np.array(centers)
-        np.savetxt(r'C:\Users\Public\CapstoneUI\centers.csv', centers, delimiter=',', header='X Y Z')
 
         for i, iqr_scale in enumerate(centers_resid_tol):
-            centers, rmse = filter_centers(centers, iqr_scale)
             print(f'Iteration {i + 1}: Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
+            centers, trend_z = filter_centers(centers, "z", iqr_scale, plot=True)
+            centers, trend_x = filter_centers(centers, "x", iqr_scale, plot=True)
             np.savetxt(r'C:\Users\Public\CapstoneUI\centersFiltered.csv', centers, delimiter=',', header='X Y Z')
-
-            if plot:
-                plt.clf()
-                plt.title(f"Iteration: {i}, rmse: {rmse:.4f}, IQR Scale: {iqr_scale}")
-                plt.subplot(211)
-                plt.scatter(centers[:, 1], centers[:, 0])
-                plt.xlim(np.min(centers[:, 1]) - 1, np.max(centers[:, 1]))
-                plt.ylabel("x-axis")
-
-                plt.subplot(212)
-                plt.scatter(centers[:, 1], centers[:, 2])
-                plt.xlim(np.min(centers[:, 1]) - 1, np.max(centers[:, 1]))
-                plt.xlabel("y-axis")
-                plt.ylabel("z-axis")
-
-                plt.tight_layout()
-                plt.show()
 
         c_axis = np.mean(centers, axis=0)
         # PCA for line direction
@@ -591,6 +586,31 @@ class Torsion_Arm_LJS640:
         points_on_line = c_axis + np.outer(projections, axis_dir)
         distances = np.linalg.norm(centers - points_on_line, axis=1)
         rmse = np.sqrt(np.mean(distances**2))
+
+        if plot:
+            plt.clf()
+            fig, axes = plt.subplots(nrows=2, ncols=1)
+            plt.setp(axes, xticks=[], yticks=[])
+
+            plt.sca(axes[0])
+            plt.title(f"Iteration: {i}, rmse: {rmse:.4f}, IQR Scale: {iqr_scale}")
+            plt.scatter(centers[:, 1], centers[:, 0])
+            plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_x[0] * np.min(centers[:, 1]) + trend_x[1], trend_x[0] * np.max(centers[:, 1]) + trend_x[1]], 
+                        linestyle='dashed', color='r')
+            plt.yticks(np.linspace(np.min(centers[:, 0]), np.max(centers[:, 0]), 5))
+            plt.ylabel("x-axis")
+
+            plt.sca(axes[1])
+            plt.scatter(centers[:, 1], centers[:, 2])
+            plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_z[0] * np.min(centers[:, 1]) + trend_z[1], trend_z[0] * np.max(centers[:, 1]) + trend_z[1]], 
+                        linestyle='dashed', color='r')
+            plt.yticks(np.linspace(np.min(centers[:, 2]), np.max(centers[:, 2]), 5))
+            plt.xticks(np.linspace(np.min(centers[:, 1]), np.max(centers[:, 1]), 7))
+            plt.xlabel("y-axis")
+            plt.ylabel("z-axis")
+
+            plt.show()
+
         print(f'Axis fit rmse: {rmse}')
         self.axis_loc = c_axis
         self.spindle_axis = axis_dir
