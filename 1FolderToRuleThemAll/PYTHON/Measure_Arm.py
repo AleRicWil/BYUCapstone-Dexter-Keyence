@@ -26,7 +26,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
 
     # Find spindle
     #scan1.fit_spindle(axial_cutoff=-112, num_bins=100, circle_fit_tol=0.23, show=True, plot=False)
-    scan1.fit_spindle2(axial_cutoff=-112, num_bins=100, circle_resid_tol=[1.0, 0.5, 0.5], min_fit_points=100, centers_resid_tol=[2.0, 1.0, 0.5, 0.5], show=False, plot=True)
+    scan1.fit_spindle2(axial_cutoff=-112, num_bins=100, circle_resid_tol=[], min_fit_points=300, centers_resid_tol=[2.0, 1.0, 0.5], show=False, plot=True)
     # print(f'Spindle Axis: {scan1.axis_dir}')
 
     #scan1.visualize_axes(length=100)
@@ -47,5 +47,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\ScanDirection05.csv')
+    main(filename=r'RealScans\DelayedScans02.csv')
     
