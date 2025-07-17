@@ -495,12 +495,13 @@ class Torsion_Arm_LJS640:
 
             filt_points = points_bin.T
             points_2d = np.dot(filt_points.T, np.array([u, v]).T)
+            center_2d, maxC, radius = fit_circle(points_2d)
             for j, iqr_scale in enumerate(circle_resid_tol):
-                center_2d, maxC, radius = fit_circle(points_2d)
                 if (radius < 0):
                     continue
 
                 points_2d = filter_circle(points_2d, center_2d, iqr_scale)
+                center_2d, maxC, radius = fit_circle(points_2d)
 
                 if self.ui:
                     self.ui.log_message(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points")
@@ -573,8 +574,10 @@ class Torsion_Arm_LJS640:
             print(f'Iteration {i + 1}: Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
             centers, trend_z = filter_centers(centers, "z", iqr_scale, plot=True)
             centers, trend_x = filter_centers(centers, "x", iqr_scale, plot=True)
-            np.savetxt(r'C:\Users\Public\CapstoneUI\centersFiltered.csv', centers, delimiter=',', header='X Y Z')
+        
+        np.savetxt(r'C:\Users\Public\CapstoneUI\centersFiltered.csv', centers, delimiter=',', header='X Y Z')
 
+        print(f'Filtered Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
         c_axis = np.mean(centers, axis=0)
         # PCA for line direction
         U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
@@ -593,17 +596,17 @@ class Torsion_Arm_LJS640:
             plt.setp(axes, xticks=[], yticks=[])
 
             plt.sca(axes[0])
-            plt.title(f"Iteration: {i}, rmse: {rmse:.4f}, IQR Scale: {iqr_scale}")
+            #plt.title(f"Iteration: {i}, rmse: {rmse:.4f}, IQR Scale: {iqr_scale}")
             plt.scatter(centers[:, 1], centers[:, 0])
-            plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_x[0] * np.min(centers[:, 1]) + trend_x[1], trend_x[0] * np.max(centers[:, 1]) + trend_x[1]], 
-                        linestyle='dashed', color='r')
+            #plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_x[0] * np.min(centers[:, 1]) + trend_x[1], trend_x[0] * np.max(centers[:, 1]) + trend_x[1]], 
+            #            linestyle='dashed', color='r')
             plt.yticks(np.linspace(np.min(centers[:, 0]), np.max(centers[:, 0]), 5))
             plt.ylabel("x-axis")
 
             plt.sca(axes[1])
             plt.scatter(centers[:, 1], centers[:, 2])
-            plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_z[0] * np.min(centers[:, 1]) + trend_z[1], trend_z[0] * np.max(centers[:, 1]) + trend_z[1]], 
-                        linestyle='dashed', color='r')
+            #plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_z[0] * np.min(centers[:, 1]) + trend_z[1], trend_z[0] * np.max(centers[:, 1]) + trend_z[1]], 
+            #            linestyle='dashed', color='r')
             plt.yticks(np.linspace(np.min(centers[:, 2]), np.max(centers[:, 2]), 5))
             plt.xticks(np.linspace(np.min(centers[:, 1]), np.max(centers[:, 1]), 7))
             plt.xlabel("y-axis")
