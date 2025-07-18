@@ -321,7 +321,7 @@ class Torsion_Arm_LJS640:
         
         # Map planar spindle points back to original 3D cloud
         plane_points = np.dot(spindle_half, np.array([u, v]).T)  # Recalculate plane_points
-        # Create a mask for points in plane_spindle
+            # Create a mask for points in plane_spindle
         mask = np.isin(plane_points, plane_spindle).all(axis=1)
         spindle_bounded = spindle_half[mask]
         if show:
@@ -404,6 +404,321 @@ class Torsion_Arm_LJS640:
         if show:
             pcd = Numpy_to_Open3D(self.spindle_cloud)
             #visualize_axis(pcd, c_axis, axis_dir, length=100)
+
+
+#region SPINDLE FIT
+    def setup_coordinate_system(self):
+        """Set up an orthogonal coordinate system based on the bar axis."""
+        approx_axis = self.bar_axis
+        if abs(approx_axis[0]) < min(abs(approx_axis[1]), abs(approx_axis[2])):
+            u = np.array([1, 0, 0])
+        elif abs(approx_axis[1]) < abs(approx_axis[2]):
+            u = np.array([0, 1, 0])
+        else:
+            u = np.array([0, 0, 1])
+        u = u - np.dot(u, approx_axis) * approx_axis
+        u = u / np.linalg.norm(u)
+        v = np.cross(approx_axis, u)
+        return u, v
+
+    def select_spindle_points(self, axial_cutoff):
+        """Select points along the bar axis below the axial cutoff."""
+        starting_point = self.bar_faces_highest_point
+        delta = self.cloud.T - starting_point
+        s = delta @ self.bar_axis
+        mask = (s <= axial_cutoff)
+        return self.cloud.T[mask, :]
+
+    def project_to_xy(self, points_3d):
+        """Project 3D points onto the global XY plane."""
+        return points_3d[:, :2]  # Assumes x, y are first two coordinates
+
+    def create_panel_grid(self, u_values, v_values, points_3d, box_size, overlap_factor):
+        """
+        Create a grid of panels and collect 3D points within each.
+
+        Args:
+            u_values (array): Axial coordinates in 2D plane.
+            v_values (array): Tangential coordinates in 2D plane.
+            points_3d (array): 3D points to be gridded.
+            box_size (float): Size of square panels in mm.
+            overlap_factor (float): Factor for panel overlap.
+
+        Returns:
+            tuple: (panels, (u_grid, v_grid), valid_panel_centers, bounds)
+        """
+        u_lower, u_upper = np.min(u_values), np.max(u_values)
+        v_lower, v_upper = np.min(v_values), np.max(v_values)
+        grid_spacing = box_size / overlap_factor
+        self.grid_spacing = grid_spacing  # Store for later use
+        half_space = grid_spacing / 2
+        u_grid = np.arange(u_lower + half_space, u_upper, grid_spacing)
+        v_grid = np.arange(v_lower + half_space, v_upper, grid_spacing)
+        panels = []
+        valid_panel_centers = []
+        min_points_per_panel = 100
+        for u_i in u_grid:
+            for v_j in v_grid:
+                u_min = u_i - box_size / 2
+                u_max = u_i + box_size / 2
+                v_min = v_j - box_size / 2
+                v_max = v_j + box_size / 2
+                mask = (u_values >= u_min) & (u_values <= u_max) & \
+                       (v_values >= v_min) & (v_values <= v_max)
+                panel_points = points_3d[mask]
+                if len(panel_points) >= min_points_per_panel:
+                    panels.append(panel_points.T)
+                    valid_panel_centers.append((u_i, v_j))
+        bounds = (u_lower, u_upper, v_lower, v_upper)
+        return panels, (u_grid, v_grid), valid_panel_centers, bounds
+
+    def fit_cylinder_to_panel(self, panel_points, show_flag=False):
+        """Fit a cylinder to a panel's points and optionally visualize the fit."""
+        from scipy.linalg import eigh
+        pcd = Numpy_to_Open3D(panel_points)
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=10))
+        normals = np.asarray(pcd.normals)
+        M = np.sum([np.outer(n, n) for n in normals], axis=0)
+        eigenvalues, eigenvectors = eigh(M)
+        axis = eigenvectors[:, np.argmin(eigenvalues)]
+        if abs(axis[0]) < min(abs(axis[1]), abs(axis[2])):
+            u = np.array([1, 0, 0])
+        elif abs(axis[1]) < abs(axis[2]):
+            u = np.array([0, 1, 0])
+        else:
+            u = np.array([0, 0, 1])
+        u = u - np.dot(u, axis) * axis
+        u = u / np.linalg.norm(u)
+        v = np.cross(axis, u)
+        points_2d = np.dot(panel_points.T, np.array([u, v]).T)
+        try:
+            A = np.hstack([points_2d, np.ones((len(points_2d), 1))])
+            b = -(points_2d[:, 0]**2 + points_2d[:, 1]**2)
+            abc = np.linalg.lstsq(A, b, rcond=None)[0]
+            a, b, c = abc
+            discriminant = a**2 + b**2 - 4*c
+            if discriminant <= 0:
+                return None
+            center_2d = [-a / 2, -b / 2]
+            radius = np.sqrt((a/2)**2 + (b/2)**2 - c)
+            residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + 
+                               (points_2d[:, 1] - center_2d[1])**2) - radius
+            rmse = np.sqrt(np.mean(residuals**2))
+            C = np.mean(panel_points.T, axis=0)
+            t = np.dot(C, axis)
+            center_3d = center_2d[0] * u + center_2d[1] * v + t * axis
+            if show_flag:
+                theta = np.linspace(0, 2 * np.pi, 100)
+                x_circle = center_2d[0] + radius * np.cos(theta)
+                y_circle = center_2d[1] + radius * np.sin(theta)
+                plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
+                plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
+                plt.scatter(center_2d[0], center_2d[1])
+                plt.title(f"rmse: {rmse:.4f}")
+                plt.axis('equal')
+                plt.xlabel("u-axis")
+                plt.ylabel("v-axis")
+                # plt.show()
+            return {'axis': axis, 'center_3d': center_3d, 'radius': radius, 'rmse': rmse}
+        except np.linalg.LinAlgError:
+            return None
+
+    def visualize_grid(self, points_2d, axis_2d, tangential_2d, u_grid, v_grid, 
+                      valid_panel_centers, box_size, u_lower, u_upper, v_lower, v_upper):
+        """Visualize the 2D projection with grid overlay."""
+        plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1, label='Points')
+        for u_i in u_grid:
+            for v_j in v_grid:
+                center = u_i * axis_2d + v_j * tangential_2d
+                half_size = box_size / 2
+                edgecolor = 'green' if (u_i, v_j) in valid_panel_centers else 'red'
+                rect = plt.Rectangle(
+                    (center[0] - half_size, center[1] - half_size),
+                    box_size, box_size,
+                    fill=False, edgecolor=edgecolor, linewidth=0.5
+                )
+                plt.gca().add_patch(rect)
+        u_lower_xy = u_lower * axis_2d
+        u_upper_xy = u_upper * axis_2d
+        v_lower_xy = v_lower * tangential_2d
+        v_upper_xy = v_upper * tangential_2d
+        corners = [
+            u_lower_xy + v_lower_xy,
+            u_lower_xy + v_upper_xy,
+            u_upper_xy + v_upper_xy,
+            u_upper_xy + v_lower_xy
+        ]
+        corners = np.array(corners)
+        plt.plot(
+            np.append(corners[:, 0], corners[0, 0]),
+            np.append(corners[:, 1], corners[0, 1]),
+            c='black', linewidth=0.5
+        )
+        plt.xlabel("X (mm)")
+        plt.ylabel("Y (mm)")
+        plt.axis('equal')
+        plt.title("2D Projection of Spindle Points with Grid (Global XY)")
+        plt.legend()
+        plt.show()
+
+    def visualize_best_fits(self, points_2d, axis_2d, tangential_2d, u_grid, v_grid, 
+                            panels, box_size, u_lower, u_upper, v_lower, v_upper):
+        """Visualize the 2D projection highlighting panels with best cylinder fits."""
+        plt.figure(10000)
+        plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1, label='Points')
+        
+        # Plot rectangles for best-fit panels only
+        index = 0
+        for u_i in u_grid:
+            for v_j in v_grid:
+                if self.panel_pass_fail[index] == True:
+                    center = u_i * axis_2d + v_j * tangential_2d
+                    half_size = box_size / 2
+                    edgecolor = 'green'
+                    plt.scatter(center[0], center[1], c='red', s=20)
+                    rect = plt.Rectangle(
+                        (center[0] - half_size, center[1] - half_size),
+                        box_size, box_size,
+                        fill=False, edgecolor=edgecolor, linewidth=0.5
+                    )
+                    plt.gca().add_patch(rect)
+                index += 1
+        
+        # Draw bounding box
+        u_lower_xy = u_lower * axis_2d
+        u_upper_xy = u_upper * axis_2d
+        v_lower_xy = v_lower * tangential_2d
+        v_upper_xy = v_upper * tangential_2d
+        corners = [
+            u_lower_xy + v_lower_xy,
+            u_lower_xy + v_upper_xy,
+            u_upper_xy + v_upper_xy,
+            u_upper_xy + v_lower_xy
+        ]
+        corners = np.array(corners)
+        plt.plot(
+            np.append(corners[:, 0], corners[0, 0]),
+            np.append(corners[:, 1], corners[0, 1]),
+            c='black', linewidth=0.5
+        )
+        plt.xlabel("X (mm)")
+        plt.ylabel("Y (mm)")
+        plt.axis('equal')
+        plt.title("2D Projection of Spindle Points with Best-Fit Panels (Global XY)")
+        plt.legend()
+        plt.show()
+
+    def plot_panel_fit(self, panel_points, cylinder_params):
+        """
+        Plots a panel's points and its fitted cylinder surface in 3D using Matplotlib.
+
+        Parameters:
+            panel_points (array): 3D points of the panel, shape (3, n_points).
+            cylinder_params (dict): Cylinder parameters {'axis', 'center_3d', 'radius', 'rmse'} or None.
+        """
+        if cylinder_params is None:
+            return
+        import matplotlib.pyplot as plt
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(panel_points[0, :], panel_points[1, :], panel_points[2, :], s=1, c='blue', label='Points')
+        axis = cylinder_params['axis']
+        center_3d = cylinder_params['center_3d']
+        radius = cylinder_params['radius']
+        rmse = cylinder_params['rmse']
+        if abs(axis[0]) < min(abs(axis[1]), abs(axis[2])):
+            u = np.array([1, 0, 0])
+        elif abs(axis[1]) < abs(axis[2]):
+            u = np.array([0, 1, 0])
+        else:
+            u = np.array([0, 0, 1])
+        u = u - np.dot(u, axis) * axis
+        u = u / np.linalg.norm(u)
+        v = np.cross(axis, u)
+        t_values = np.dot(panel_points.T - center_3d, axis)
+        t_range = np.max(t_values) - np.min(t_values)
+        t_half = 0.5 * t_range
+        t = np.linspace(-t_half, t_half, 50)
+        theta = np.linspace(0, 2 * np.pi, 50)
+        theta, t = np.meshgrid(theta, t)
+        X = center_3d[0] + radius * np.cos(theta) * u[0] + radius * np.sin(theta) * v[0] + t * axis[0]
+        Y = center_3d[1] + radius * np.cos(theta) * u[1] + radius * np.sin(theta) * v[1] + t * axis[1]
+        Z = center_3d[2] + radius * np.cos(theta) * u[2] + radius * np.sin(theta) * v[2] + t * axis[2]
+        ax.plot_surface(X, Y, Z, color='red', alpha=0.3, rstride=5, cstride=5, label='Cylinder')
+        ax.set_xlabel('X (mm)')
+        ax.set_ylabel('Y (mm)')
+        ax.set_zlabel('Z (mm)')
+        ax.set_title(f'Panel Points and Cylinder Fit. Radial RMSE: {rmse:.4f}')
+        plt.legend()
+        # plt.show()
+
+    def fit_spindle_3D(self, axial_cutoff=-150, show_flag=False, box_size=50.0, overlap_factor=1.1):
+        """
+        Fits a 3D spindle by splitting it into panels and visualizing in global XYZ frame.
+
+        Args:
+            axial_cutoff (float): Threshold along the bar axis to isolate spindle points.
+            show_flag (bool): If True, displays intermediate plots.
+            box_size (float): Size of square panel sides in mm.
+            overlap_factor (float): Factor to scale box sizes for overlap (e.g., 1.1 for 10% overlap).
+        """
+        u, v = self.setup_coordinate_system()
+        spindle_points = self.select_spindle_points(axial_cutoff)
+        points_xy = self.project_to_xy(spindle_points)
+        
+        axis_xy = self.bar_axis[:2]
+        if np.linalg.norm(axis_xy) > 1e-6:
+            axis_xy = axis_xy / np.linalg.norm(axis_xy)
+        else:
+            axis_xy = np.array([1.0, 0.0])
+        tangential_xy = np.array([-axis_xy[1], axis_xy[0]])
+        
+        u_values = points_xy @ axis_xy
+        v_values = points_xy @ tangential_xy
+        
+        panels, (u_grid, v_grid), valid_panel_centers, bounds = self.create_panel_grid(
+            u_values, v_values, spindle_points, box_size, overlap_factor
+        )
+        self.panel_pass_fail = [True]*len(u_grid)*len(v_grid)
+        self.panels = panels
+        self.u_grid = u_grid
+        self.v_grid = v_grid
+        self.valid_panel_centers = valid_panel_centers
+        u_lower, u_upper, v_lower, v_upper = bounds
+        
+        if show_flag:
+            self.visualize_grid(points_xy, axis_xy, tangential_xy, u_grid, v_grid,
+                              valid_panel_centers, box_size, u_lower, u_upper, v_lower, v_upper)
+        
+        panel_fits = []
+        for panel in panels:
+            fit = self.fit_cylinder_to_panel(panel, show_flag=False)
+            panel_fits.append(fit)
+            # if show_flag:
+            #     self.plot_panel_fit(panel, fit)
+            plt.show()
+        
+        valid_fits = [fit for fit in panel_fits if fit is not None]
+        self.best_fits = []
+        if valid_fits:
+            rmses = [fit['rmse'] for fit in valid_fits]
+            rmse_cutoff = np.percentile(rmses, 10); print(rmse_cutoff)
+            
+            for i, fit in enumerate(valid_fits):
+                if fit['rmse'] <= rmse_cutoff:
+                    self.best_fits.append(fit)
+                else:
+                    self.panel_pass_fail[i] = False
+        
+        
+        print(self.best_fits)
+        if show_flag and self.best_fits:
+            self.visualize_best_fits(points_xy, axis_xy, tangential_xy, u_grid, v_grid,
+                                   panels, box_size, u_lower, u_upper, v_lower, v_upper)
+
+#endregion
+
+
 
     def visualize_axes(self, length=0.1):
         # Red
