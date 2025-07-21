@@ -481,7 +481,62 @@ class Torsion_Arm_LJS640:
         bounds = (u_lower, u_upper, v_lower, v_upper)
         return (u_grid, v_grid), bounds
 
-    def create_sub_panels(self, u_values, v_values, points_3d):
+    def create_grid(self, current_size, points_3d):
+        """
+        Create a grid of panels with specified size.
+
+        Args:
+            current_size (float): Size of panels in mm.
+            u_values (array): Axial coordinates in 2D plane.
+            v_values (array): Tangential coordinates in 2D plane.
+            points_3d (array): 3D points to be gridded.
+
+        Returns:
+            tuple: (list of panels, bounds as (u_lower, u_upper, v_lower, v_upper))
+        """
+        grid_spacing = current_size / self.overlap_factor
+        u_grid = np.arange(self.u_lower + grid_spacing/2, self.u_upper, grid_spacing)
+        v_grid = np.arange(self.v_lower + grid_spacing/2, self.v_upper, grid_spacing)
+        panels = []
+        for u_i in u_grid:
+            for v_j in v_grid:
+                u_min = u_i - current_size / 2
+                u_max = u_i + current_size / 2
+                v_min = v_j - current_size / 2
+                v_max = v_j + current_size / 2
+                mask = (self.u_values >= u_min) & (self.u_values <= u_max) & \
+                    (self.v_values >= v_min) & (self.v_values <= v_max)
+                panel_points = points_3d[mask]
+                if panel_points.shape[0] > 50:
+                    panel_center = u_i * self.axis_xy + v_j * self.tangential_xy
+                    panel = self.Panel(center=panel_center, size=current_size, points=panel_points.T)
+                    panels.append(panel)
+        return panels
+
+    def is_inside_good_panel(self, panel, good_panels):
+        """
+        Check if a panel's center lies within any existing good panel.
+
+        Args:
+            panel: Panel object to check.
+            good_panels: List of panels with good fits.
+
+        Returns:
+            bool: True if panel center is inside any good panel, False otherwise.
+        """
+        for good_panel in good_panels:
+            if not good_panel.good_fit_flag:
+                continue
+            center = panel.center
+            good_center = good_panel.center
+            half_size = good_panel.size / 2
+            if (abs(center[0] - good_center[0]) < half_size and
+                abs(center[1] - good_center[1]) < half_size):
+                return True
+        return False
+
+    def create_sub_panels(self, u_values, v_values, points_3d, overlap_factor):
+        new_panels = []
         for panel in self.panels:
             if panel.good_fit_flag:
                 center_xy = panel.center
@@ -493,30 +548,30 @@ class Torsion_Arm_LJS640:
                 half_sub_size = sub_size /2
                 offsets = [
                     # Top row
-                    (-sub_size, half_size + half_sub_size),
-                    (0, half_size + half_sub_size),
-                    (sub_size, half_size + half_sub_size),
+                    (-half_size - half_sub_size, half_size + half_sub_size),
+                    (-half_sub_size, half_size + half_sub_size),
+                    (half_sub_size, half_size + half_sub_size),
+                    (half_size + half_sub_size, half_size + half_sub_size),
                     # Bottom row
-                    (-sub_size, -half_size - half_sub_size),
-                    (0, -half_size - half_sub_size),
-                    (sub_size, -half_size - half_sub_size),
+                    (-half_size - half_sub_size, -half_size - half_sub_size),
+                    (-half_sub_size, -half_size - half_sub_size),
+                    (half_sub_size, -half_size - half_sub_size),
+                    (half_size + half_sub_size, -half_size - half_sub_size),
                     # Left column
-                    (-half_size - half_sub_size, half_size),
-                    (-half_size - half_sub_size, 0),
-                    (-half_size - half_sub_size, -half_size),
+                    (-half_size - half_sub_size, half_sub_size),
+                    (-half_size - half_sub_size, -half_sub_size),
                     # Right column
-                    (half_size + half_sub_size, half_size),
-                    (half_size + half_sub_size, 0),
-                    (half_size + half_sub_size, -half_size)]
+                    (half_size + half_sub_size, half_sub_size),
+                    (half_size + half_sub_size, -half_sub_size),]
                 
                 # print('center_xy', center_xy, 'center_uv', center_uv)
                 for du, dv in offsets:
                     sub_center = center_uv + np.array([du, dv])
-                    # print('sub_center', sub_center)
-                    u_min = sub_center[0] - half_sub_size
-                    u_max = sub_center[0] + half_sub_size
-                    v_min = sub_center[1] - half_sub_size
-                    v_max = sub_center[1] + half_sub_size
+                    overlapped_size = half_sub_size*overlap_factor
+                    u_min = sub_center[0] - overlapped_size
+                    u_max = sub_center[0] + overlapped_size
+                    v_min = sub_center[1] - overlapped_size
+                    v_max = sub_center[1] + overlapped_size
                     # print(u_min, u_max, v_min, v_max)
                     mask = (u_values >= u_min) & (u_values <= u_max) & \
                            (v_values >= v_min) & (v_values <= v_max)
@@ -526,9 +581,26 @@ class Torsion_Arm_LJS640:
                     # print(sub_points)
                     if sub_points.T.shape[1] > 100:
                         sub_panel = self.Panel(center=sub_center, size=sub_size, points=sub_points.T)
-                        self.panels.append(sub_panel)
-        
-    def fit_cylinder_to_panel(self, panel, show_flag=False):
+                        new_panels.append(sub_panel)
+        self.panels.extend(new_panels)
+
+    def clean_overlapped_panels(self, box_size):
+        for _ in range(5):
+            for i, panel in enumerate(self.panels):
+                for j, other_panel in enumerate(self.panels):
+                    if i != j and other_panel.good_fit_flag:
+                        center = panel.center
+                        other_center = other_panel.center
+                        half_size = other_panel.size / 2
+                        if (abs(center[0] - other_center[0]) < half_size and
+                            abs(center[1] - other_center[1]) < half_size):
+                            if panel.size < box_size:
+                                del self.panels[i]
+                            break
+        # for i in sorted(to_remove, reverse=True):
+        #     del self.panels[i]
+
+    def fit_cylinder_to_panel(self, panel):
         """Fit a cylinder to a panel's points and optionally visualize the fit."""
         from scipy.linalg import eigh
         
@@ -569,44 +641,29 @@ class Torsion_Arm_LJS640:
             C = np.mean(panel_points.T, axis=0)
             t = np.dot(C, axis)
             center_3d = center_2d[0] * u + center_2d[1] * v + t * axis
-            if show_flag:
-                theta = np.linspace(0, 2 * np.pi, 100)
-                x_circle = center_2d[0] + radius * np.cos(theta)
-                y_circle = center_2d[1] + radius * np.sin(theta)
-                fig = plt.figure(figsize=(6, 6))
-                fig.canvas.manager.window.wm_geometry("600x600+100+100")  # 600x600 size, position (100, 100)
-                plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
-                plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
-                plt.scatter(center_2d[0], center_2d[1])
-                plt.title(f"rmse: {rmse:.4f}")
-                plt.axis('equal')
-                plt.xlabel("u-axis")
-                plt.ylabel("v-axis")
                 
-                # plt.show()
             panel.fit_points_2d = points_2d
             panel.fit_params = {'axis': axis, 'colinearity': colinearity, 'center_3d': center_3d, 
                                 'radius': radius, 'rmse': rmse, 'center_2d': center_2d}
         except np.linalg.LinAlgError:
             pass
 
-    def visualize_grid(self, points_2d, u_lower, u_upper, v_lower, v_upper):
+    def visualize_grid(self, panels, panel_size):
         """Visualize the 2D projection with grid overlay."""
-        plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1, label='Points')
-        for panel in self.panels:
-            center = panel.center
-            half_size = panel.size / 2
-            edgecolor = 'green'
-            rect = plt.Rectangle(
-                (center[0] - half_size, center[1] - half_size),
-                panel.size, panel.size,
-                fill=False, edgecolor=edgecolor, linewidth=0.5
-            )
-            plt.gca().add_patch(rect)
-        u_lower_xy = u_lower * self.axis_xy
-        u_upper_xy = u_upper * self.axis_xy
-        v_lower_xy = v_lower * self.tangential_xy
-        v_upper_xy = v_upper * self.tangential_xy
+        plt.scatter(self.points_xy[:, 0], self.points_xy[:, 1], s=1, label='Points')
+        for panel in panels:
+            if int(panel.size) == int(panel_size):
+                center = panel.center
+                half_size = panel.size / 2
+                edgecolor = 'green'
+                rect = plt.Rectangle((center[0] - half_size, center[1] - half_size),
+                                    panel.size, panel.size,
+                                    fill=False, edgecolor=edgecolor, linewidth=0.5)
+                plt.gca().add_patch(rect)
+        u_lower_xy = self.u_lower * self.axis_xy
+        u_upper_xy = self.u_upper * self.axis_xy
+        v_lower_xy = self.v_lower * self.tangential_xy
+        v_upper_xy = self.v_upper * self.tangential_xy
         corners = [
             u_lower_xy + v_lower_xy,
             u_lower_xy + v_upper_xy,
@@ -626,32 +683,47 @@ class Torsion_Arm_LJS640:
         plt.legend()
         plt.show()
 
-    def visualize_good_panels(self, points_2d, u_lower, u_upper, v_lower, v_upper):
+    def visualize_good_panels(self, panels=None):
         """Visualize the 2D projection highlighting panels with best cylinder fits."""
         plt.figure()
-        plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1, label='Points')
+        plt.scatter(self.points_xy[:, 0], self.points_xy[:, 1], s=1, label='Points')
         
         # Plot rectangles for best-fit panels only
-        index = 0
-        for panel in self.panels:
-            if panel.good_fit_flag == True:
-                center = panel.center
-                half_size = panel.size / 2
-                edgecolor = 'green'
-                plt.scatter(center[0], center[1], c='red', s=20)
-                rect = plt.Rectangle(
-                    (center[0] - half_size, center[1] - half_size),
-                    panel.size, panel.size,
-                    fill=False, edgecolor=edgecolor, linewidth=0.5
-                )
-                plt.gca().add_patch(rect)
-            index += 1
+        if panels == None:
+            use_panels = self.panels
+        else:
+            use_panels = panels
+
+        if  hasattr(use_panels, '__iter__'):
+            for panel in use_panels:
+                if panel.good_fit_flag == True:
+                    center = panel.center
+                    half_size = panel.size / 2
+                    edgecolor = 'green'
+                    plt.scatter(center[0], center[1], c='red', s=20)
+                    rect = plt.Rectangle(
+                        (center[0] - half_size, center[1] - half_size),
+                        panel.size, panel.size,
+                        fill=False, edgecolor=edgecolor, linewidth=0.5
+                    )
+                    plt.gca().add_patch(rect)
+        else:
+            center = use_panels.center
+            half_size = use_panels.size / 2
+            edgecolor = 'green'
+            plt.scatter(center[0], center[1], c='red', s=20)
+            rect = plt.Rectangle(
+                (center[0] - half_size, center[1] - half_size),
+                use_panels.size, use_panels.size,
+                fill=False, edgecolor=edgecolor, linewidth=0.5
+            )
+            plt.gca().add_patch(rect)
         
         # Draw bounding box
-        u_lower_xy = u_lower * self.axis_xy
-        u_upper_xy = u_upper * self.axis_xy
-        v_lower_xy = v_lower * self.tangential_xy
-        v_upper_xy = v_upper * self.tangential_xy
+        u_lower_xy = self.u_lower * self.axis_xy
+        u_upper_xy = self.u_upper * self.axis_xy
+        v_lower_xy = self.v_lower * self.tangential_xy
+        v_upper_xy = self.v_upper * self.tangential_xy
         corners = [
             u_lower_xy + v_lower_xy,
             u_lower_xy + v_upper_xy,
@@ -738,19 +810,213 @@ class Torsion_Arm_LJS640:
 
         plt.show()
 
-    def fit_spindle_3D(self, axial_cutoff=-150, show_flag=False, box_size=50.0, overlap_factor=1.1):
+    def group_panels_by_radius(self, radius_tolerance=0.1):
         """
-        Fits a 3D spindle by splitting it into panels and visualizing in global XYZ frame.
+        Groups panels by their radius, dynamically identifying distinct radius groups.
+        Args:
+            radius_tolerance (float): Maximum radius difference (mm) to consider two radii the same (not used in this implementation).
+        Stores:
+            self.panel_groups: Dict with radius values as keys and lists of panels as values.
+        """
+        self.panel_groups = {}
+        
+        # Filter panels with a valid radius in fit_params
+        valid_panels = [panel for panel in self.panels if panel.fit_params and 'radius' in panel.fit_params]
+        if not valid_panels:
+            return
+        
+        # Sort panels by radius
+        sorted_panels = sorted(valid_panels, key=lambda p: p.fit_params['radius'])
+        
+        # Handle single panel case
+        if len(sorted_panels) == 1:
+            avg_radius = sorted_panels[0].fit_params['radius']
+            self.panel_groups[round(avg_radius, 2)] = [sorted_panels[0]]
+            return
+        
+        # Extract radii and compute step sizes
+        radii = [p.fit_params['radius'] for p in sorted_panels]
+        steps = np.diff(radii)
+        average_step = np.mean(steps)
+        
+        # Group panels based on step sizes
+        groups = []
+        current_group = [sorted_panels[0]]
+        previous_radius = radii[0]
+        
+        for panel in sorted_panels[1:]:
+            current_radius = panel.fit_params['radius']
+            step = current_radius - previous_radius
+            
+            # If step exceeds twice the average step size, start a new group
+            if step > 4 * average_step:
+                groups.append(current_group)
+                current_group = [panel]
+            else:
+                current_group.append(panel)
+            
+            previous_radius = current_radius
+        
+        # Append the last group
+        if current_group:
+            groups.append(current_group)
+        
+        # Assign groups to self.panel_groups with average radius as key
+        for group in groups:
+            group_radii = [p.fit_params['radius'] for p in group]
+            avg_radius = np.mean(group_radii)
+            key = round(avg_radius, 2)
+            self.panel_groups[key] = group
+
+    def group_panels_by_axial_location(self, y_thresholds=None, min_gap=20.0):
+        """
+        Groups panels by their axial location along the bar axis (self.bar_axis).
+        Panels are sorted by their projection onto self.bar_axis and grouped based on
+        either predefined thresholds or detected gaps in the axial coordinates.
+
+        Args:
+            y_thresholds (list, optional): List of axial coordinates to use as thresholds for grouping.
+                                        If None, groups are determined by detecting gaps.
+            min_gap (float, optional): Minimum gap size (in mm) in axial coordinates to consider
+                                    as a separation between groups. Used if y_thresholds is None.
+
+        Stores:
+            self.axial_groups: Dict with group indices as keys and lists of panels as values.
+        """
+        # Filter panels with valid centers and good fits
+        valid_panels = [panel for panel in self.panels if panel.good_fit_flag and panel.center is not None]
+        if not valid_panels:
+            self.axial_groups = {}
+            return
+
+        # Project panel centers onto bar axis to get axial coordinates
+        axial_coords = [np.dot(panel.center, self.axis_xy) for panel in valid_panels]
+        panel_indices = list(range(len(valid_panels)))
+
+        # Sort panels by axial coordinate (ascending)
+        sorted_indices = np.argsort(axial_coords)
+        sorted_axial_coords = [axial_coords[i] for i in sorted_indices]
+        sorted_panels = [valid_panels[i] for i in sorted_indices]
+
+        gaps = np.diff(sorted_axial_coords)
+        avg_gap = np.mean(gaps)
+
+        self.axial_groups = {}
+        group_idx = 0
+
+        if y_thresholds is not None:
+            # Use predefined thresholds (projected onto bar axis)
+            y_thresholds = sorted([np.dot(thresh, self.bar_axis) for thresh in y_thresholds])
+            current_group = []
+            threshold_idx = 0
+
+            for i, (axial, panel) in enumerate(zip(sorted_axial_coords, sorted_panels)):
+                while threshold_idx < len(y_thresholds) and axial >= y_thresholds[threshold_idx]:
+                    if current_group:
+                        self.axial_groups[group_idx] = current_group
+                        group_idx += 1
+                    current_group = []
+                    threshold_idx += 1
+                current_group.append(panel)
+
+            if current_group:
+                self.axial_groups[group_idx] = current_group
+
+        else:
+            # Automatically detect groups by finding gaps in axial coordinates
+            current_group = [sorted_panels[0]]
+            for i in range(1, len(sorted_panels)):
+                gap = sorted_axial_coords[i] - sorted_axial_coords[i-1]
+                if gap > avg_gap*4.5:
+                    self.axial_groups[group_idx] = current_group
+                    group_idx += 1
+                    current_group = [sorted_panels[i]]
+                else:
+                    current_group.append(sorted_panels[i])
+
+            if current_group:
+                self.axial_groups[group_idx] = current_group
+
+        # Log the number of groups and panels in each
+        for idx, group in self.axial_groups.items():
+            print(f"Group {idx}: {len(group)} panels, Axial-range: "
+                f"{min(np.dot(p.center, self.axis_xy) for p in group):.2f} to "
+                f"{max(np.dot(p.center, self.axis_xy) for p in group):.2f} mm")
+            
+        for idx, group in self.axial_groups.items():
+            radii = [p.fit_params['radius'] for p in group if p.fit_params and 'radius' in p.fit_params]
+            avg_radius = np.mean(radii) if radii else 0.0
+            print(f"Group {idx}: Avg Radius = {avg_radius:.2f} mm")
+
+    def combine_panels_into_single_panel(self, group):
+        """
+        Combines all panels in a group into a single panel with combined 3D points
+        and centroid as the center. No fit parameters are calculated.
+
+        Args:
+            group (list): List of panel objects to combine.
+
+        Returns:
+            Panel: A new panel object with combined points and centroid center.
+        """
+        if not group:
+            return None
+
+        # Combine all 3D points from the group
+        combined_points = np.hstack([panel.points for panel in group])
+
+        # Calculate x-y centroid as the center
+        x_coords = combined_points[0]
+        y_coords = combined_points[1]
+        centroid_xy = np.array([np.mean(x_coords), np.mean(y_coords), 0.0])
+
+        # Create new panel with combined points and centroid center
+        new_panel = self.Panel(center=centroid_xy, size=0.0, points=combined_points)
+        new_panel.num_points = combined_points.shape[1]
+
+        return new_panel
+
+    def combine_similar_regions(self):
+        """
+        Combines adjacent regions in self.regions whose radii are within 1mm of each other.
+        Updates self.regions with combined panels.
+        """
+        i = 0
+        while i < len(self.regions) - 1:
+            radius_i = self.regions[i].fit_params['radius'] if self.regions[i].fit_params and 'radius' in self.regions[i].fit_params else float('inf')
+            radius_j = self.regions[i + 1].fit_params['radius'] if self.regions[i + 1].fit_params and 'radius' in self.regions[i + 1].fit_params else float('inf')
+            if abs(radius_i - radius_j) <= 1.0:
+                combined_points = np.hstack((self.regions[i].points, self.regions[i + 1].points))
+                x_coords = combined_points[0]
+                y_coords = combined_points[1]
+                centroid_xy = np.array([np.mean(x_coords), np.mean(y_coords), 0.0])
+                new_region = self.Panel(center=centroid_xy, size=0.0, points=combined_points)
+                new_region.num_points = combined_points.shape[1]
+                self.regions[i] = new_region
+                self.regions.pop(i + 1)
+            else:
+                i += 1
+
+    def fit_spindle_3D(self, axial_cutoff=-150, show_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1):
+        """
+        Fits a 3D spindle by creating grids of decreasing panel sizes, keeping good fits.
 
         Args:
             axial_cutoff (float): Threshold along the bar axis to isolate spindle points.
             show_flag (bool): If True, displays intermediate plots.
-            box_size (float): Size of square panel sides in mm.
-            overlap_factor (float): Factor to scale box sizes for overlap (e.g., 1.1 for 10% overlap).
+            box_size (float): Initial panel size in mm.
+            min_size (float): Minimum panel size to stop subdivision.
+            overlap_factor (float): Factor to scale panel sizes for point inclusion.
         """
-        u, v = self.setup_coordinate_system()
+        #region ITERATIVE GRID SEARCH FOR LOW NOISE
+        # Store overlap_factor for use in create_grid
+        self.overlap_factor = overlap_factor
+        
+        # Setup coordinate system and project points
         spindle_points = self.select_spindle_points(axial_cutoff)
-        points_xy = self.project_to_xy(spindle_points)
+        # if show_flag:
+        #     self.show_cloud(spindle_points.T)
+        self.points_xy = self.project_to_xy(spindle_points)
         
         self.axis_xy = self.bar_axis[:2]
         if np.linalg.norm(self.axis_xy) > 1e-6:
@@ -759,42 +1025,98 @@ class Torsion_Arm_LJS640:
             self.axis_xy = np.array([1.0, 0.0])
         self.tangential_xy = np.array([-self.axis_xy[1], self.axis_xy[0]])
         
-        u_values = points_xy @ self.axis_xy
-        v_values = points_xy @ self.tangential_xy
+        self.u_values = self.points_xy @ self.axis_xy
+        self.v_values = self.points_xy @ self.tangential_xy
+        self.u_lower, self.u_upper = np.min(self.u_values), np.max(self.u_values)
+        self.v_lower, self.v_upper = np.min(self.v_values), np.max(self.v_values)
         
-        (u_grid, v_grid), bounds = self.create_initial_grid(
-            u_values, v_values, spindle_points, box_size, overlap_factor
-        )
-        self.u_grid = u_grid
-        self.v_grid = v_grid
-        u_lower, u_upper, v_lower, v_upper = bounds
-        
-        for i in range(len(self.panels) - 1, -1, -1):   # iterate in reverse for list structure
-            if self.panels[i].num_points < 100:
-                del self.panels[i]
+        # Initialize with first grid
+        self.panels = self.create_grid(box_size, spindle_points)
 
-        # if show_flag:
-        #     self.visualize_grid(points_xy, u_lower, u_upper, v_lower, v_upper)
+        print(f'Showing intial grid of size {box_size}')
+        # self.visualize_grid(panels=self.panels, panel_size=box_size)
         
+        # Fit cylinders and establish RMSE cutoff
         for panel in self.panels:
-            self.fit_cylinder_to_panel(panel, show_flag=False)
+            self.fit_cylinder_to_panel(panel)
         
+        rmses = [panel.fit_params['rmse'] for panel in self.panels if panel.fit_params]
+        rmse_cutoff = np.percentile(rmses, 12) if rmses else float('inf')
         
-        rmses = [panel.fit_params['rmse'] for panel in self.panels]
-        rmse_cutoff = np.percentile(rmses, 25); print(rmse_cutoff) 
-        for panel in self.panels:  
-            if panel.fit_params['rmse'] > rmse_cutoff or panel.fit_params['colinearity'] < 0.99:
-                panel.good_fit_flag = False
+        # Keep only good panels
+        self.panels = [panel for panel in self.panels  
+                    if panel.fit_params and 
+                    panel.fit_params['rmse'] <= rmse_cutoff and 
+                    panel.fit_params['colinearity'] >= 0.99]
         
+        # Visualize initial good panels
         if show_flag:
-            self.visualize_good_panels(points_xy, u_lower, u_upper, v_lower, v_upper)
-            # for panel in self.panels:
-            #     if panel.good_fit_flag:
-            #         self.plot_panel_fit(panel)
-
-        self.create_sub_panels(u_values, v_values, spindle_points)
-        self.visualize_good_panels(points_xy, u_lower, u_upper, v_lower, v_upper)
+            print('Showing panels with good fits')
+            # self.visualize_good_panels()
         
+        # Iterative refinement
+        current_size = box_size / 2
+        while current_size >= min_size:
+            good_panels = self.panels.copy()
+            new_panels = self.create_grid(current_size, spindle_points)
+            print(f'Showing new grid of size {current_size}')
+            # self.visualize_grid(panels=new_panels, panel_size=current_size)
+            
+            # Filter out panels whose centers are inside existing good panels
+            new_panels = [panel for panel in new_panels 
+                        if not self.is_inside_good_panel(panel, good_panels)]
+            print(f'Showing filtered grid of size {current_size}')
+            # self.visualize_grid(panels=new_panels, panel_size=current_size)
+            
+            # Fit cylinders to new panels
+            for panel in new_panels:
+                self.fit_cylinder_to_panel(panel)
+            
+            # Keep good panels
+            new_good_panels = [panel for panel in new_panels 
+                            if panel.fit_params and 
+                            panel.fit_params['rmse'] <= rmse_cutoff and 
+                            panel.fit_params['colinearity'] >= 0.99]
+            
+            self.panels.extend(new_good_panels)
+            
+            # Visualize after each iteration
+            if show_flag:
+                print(f'Showing good panels')
+                # self.visualize_good_panels()
+            
+            current_size /= 2
+        
+        # Final visualization
+        if show_flag:
+            print(f'Showing final {len(self.panels)} good panels')
+            self.visualize_good_panels()
+            # for i, panel in enumerate(self.panels):
+            #     print(i); self.plot_panel_fit(panel)
+        #endregion
+
+        #region FIT TO EACH DIAMETER
+        self.regions = []
+        self.group_panels_by_axial_location()
+        for group_idx, group in self.axial_groups.items():
+            # self.visualize_good_panels(group)
+            new_region = self.combine_panels_into_single_panel(group)
+            self.regions.append(new_region)
+            self.visualize_good_panels(new_region)
+            self.fit_cylinder_to_panel(new_region)
+            self.plot_panel_fit(new_region)
+            print(new_region.fit_params['radius'])
+
+        # print('Combined regions of similar radius')
+        # self.combine_similar_regions()
+        # for region in self.regions:
+        #     self.fit_cylinder_to_panel(region)
+        #     self.visualize_good_panels(region)
+        #     self.plot_panel_fit(region)
+        #     print(region.fit_params['radius'])
+        #endregion
+
+
 #endregion
 
 
