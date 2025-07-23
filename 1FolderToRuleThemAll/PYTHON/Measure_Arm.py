@@ -22,30 +22,30 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
 
     # Find bar faces
     scan1.fit_bar_faces(plotNum=0, cutOff=[-500, 0], show=False)
-    # print(f'Bar Axis: {scan1.bar_axis}')
+    print(f'Bar Axis: {scan1.bar_axis}')
 
     # Find spindle
     # scan1.fit_spindle(axial_cutoff=-120, num_bins=100, circle_fit_tol=0.15, show=True, plot=False)
     scan1.fit_spindle_3D(axial_cutoff=-110, show_flag=True, box_size=8.0)
-    # print(f'Spindle Axis: {scan1.axis_dir}')
+    print(f'Spindle Axis: {scan1.spindle_axis}')
 
-    #scan1.visualize_axes(length=100)
+    # scan1.visualize_axes(length=100)
 
-    # scan1.calc_angles()
-    # scan1.print_angles()    
+    scan1.calc_angles()
+    scan1.print_angles()    
 
-    # end = time.time()
+    end = time.time()
 
-    # # scan1.show_cloud(np.hstack((scan1.barPrimaryFace, scan1.barSecondaryFace, scan1.spindle_cloud)))
+    # scan1.show_cloud(np.hstack((scan1.barPrimaryFace, scan1.barSecondaryFace, scan1.spindle_cloud)))
 
-    # print(f'\nTotal Duration: {end-start:.3f}')
+    print(f'\nTotal Duration: {end-start:.3f}')
 
-    # results = {"bar_x_angle": scan1.bar_angle[0], "bar_y_angle": scan1.bar_angle[1], "bar_z_angle": scan1.bar_angle[2], 
-    #            "spindle_x_angle": scan1.spindle_angle[0], "spindle_y_angle": scan1.spindle_angle[1], "spindle_z_angle": scan1.spindle_angle[2],
-    #            "rel_x_angle": scan1.relative_angle[0], "rel_y_angle": scan1.relative_angle[1], "rel_z_angle": scan1.relative_angle[2],
-    #            "total_angle": scan1.total_angle}
-    # return results
+    results = {"bar_x_angle": scan1.bar_angle[0], "bar_y_angle": scan1.bar_angle[1], "bar_z_angle": scan1.bar_angle[2], 
+               "spindle_x_angle": scan1.spindle_angle[0], "spindle_y_angle": scan1.spindle_angle[1], "spindle_z_angle": scan1.spindle_angle[2],
+               "rel_x_angle": scan1.relative_angle[0], "rel_y_angle": scan1.relative_angle[1], "rel_z_angle": scan1.relative_angle[2],
+               "total_angle": scan1.total_angle}
+    return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\NewerSettings07.csv')
+    main(filename=r'RealScans\NewerSettings10.csv')
     
