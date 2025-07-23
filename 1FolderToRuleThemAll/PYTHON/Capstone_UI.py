@@ -188,7 +188,10 @@ class Dexter_Capstone_UI:
                 return
 
             os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
-            self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar X Angle", "Bar Y Angle", "Bar Z Angle", "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle", "Total Relative Angle", "Date Scanned"])
+            self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar X Angle", "Bar Y Angle", "Bar Z Angle",
+                                                          "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle",
+                                                          "Relative X Angle", "Relative Y Angle", "Relative Z Angle",
+                                                            "Total Relative Angle", "Date Scanned"])
             df = pd.read_csv(self.arm_database_path, dtype=str)
             if self.arm_id not in df["Arm ID"].values:
                 pd.concat([df, pd.DataFrame([{"Arm ID": self.arm_id}])], ignore_index=True).to_csv(self.arm_database_path, index=False)
@@ -351,7 +354,7 @@ class Dexter_Capstone_UI:
             self.auto_mode_switch = ctk.CTkSwitch(mode_frame, text="Auto/Manual", command=self.update_auto_mode)
             self.auto_mode_switch.pack(side=ctk.LEFT)
             self.auto_flag = self.auto_mode_switch.get() == 0
-            ctk.CTkButton(frame, text="Back", command=self.measure_hub, width=200).pack(pady=(40, 0))
+            ctk.CTkButton(frame, text="Back", command=self.measure_arm, width=200).pack(pady=(40, 0))
             self.master.bind("<Return>", lambda event: self.run_scanner())
         self.setup_screen("TorFlex Axle — Measure Crank Arm Alignment", content)
 
@@ -367,7 +370,20 @@ class Dexter_Capstone_UI:
                 scan_results = MA.main(self.arm_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 if isinstance(scan_results, dict) and isinstance(scan_results, dict):
+                    self.bar_X_angle = scan_results.get("bar_x_angle", "N/A")
+                    self.bar_Y_angle = scan_results.get("bar_y_angle", "N/A")
+                    self.bar_Z_angle = scan_results.get("bar_z_angle", "N/A")
+
+                    self.spindle_X_angle = scan_results.get("spindle_x_angle", "N/A")
+                    self.spindle_Y_angle = scan_results.get("spindle_y_angle", "N/A")
+                    self.spindle_Z_angle = scan_results.get("spindle_z_angle", "N/A")
+
+                    self.relative_X_angle = scan_results.get("rel_x_angle", "N/A")
+                    self.relative_Y_angle = scan_results.get("rel_y_angle", "N/A")
+                    self.relative_Z_angle = scan_results.get("rel_z_angle", "N/A")
+
                     self.total_arm_angle = scan_results.get("total_angle", "N/A")
+
                     self.master.after(0, self.show_arm_results)
                 else:
                     self.master.after(0, lambda: messagebox.showerror("Error", "Invalid scan results"))
@@ -393,7 +409,7 @@ class Dexter_Capstone_UI:
                 messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Total Relative Angle:\t{self.total_arm_angle}°')
+            results = (f'Total Toe:\t{self.relative_X_angle:.4f}°\nTotal Camber:\t{self.relative_Z_angle:.4f}°')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
@@ -402,18 +418,24 @@ class Dexter_Capstone_UI:
 
     def save_arm_results(self):
         df = pd.read_csv(self.arm_database_path, dtype=str)
-        df.loc[df["Arm ID"] == self.arm_id, ["Total Relative Angle", "Date Scanned"]] = [self.total_arm_angle, date.today()]
+        df.loc[df["Arm ID"] == self.arm_id, ["Bar X Angle", "Bar Y Angle", "Bar Z Angle",
+                                             "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle", 
+                                             "Relative X Angle", "Relative Y Angle", "Relative Z Angle", 
+                                                "Total Relative Angle", "Date Scanned"]] = [self.bar_X_angle, self.bar_Y_angle, self.bar_Z_angle,
+                                                                                            self.spindle_X_angle, self.spindle_Y_angle, self.spindle_Z_angle, 
+                                                                                            self.relative_X_angle, self.relative_Y_angle, self.relative_Z_angle, 
+                                                                                            self.total_arm_angle, date.today()]
         df.to_csv(self.arm_database_path, index=False)
         self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
 
     def print_arm_results(self):
         pdf_path = os.path.join(r"C:\Users\Public\CapstoneUI", f"{self.arm_id}.pdf")
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-        c = canvas.Canvas(pdf_path, pagesize=(2 * 72, 1 * 72))
+        c = canvas.Canvas(pdf_path, pagesize=(2 * 144, 1 * 72))
         c.setFont("Courier", 8)
         text = c.beginText(0.25 * 72, 0.85 * 72)
         text.setLeading(10)
-        for line in [f"Arm ID: {self.arm_id}", f"Total Relative Angle: {self.total_arm_angle}°"]:
+        for line in [f"Arm ID: {self.arm_id}", f"Total Toe: {self.relative_X_angle:.4f}°, Total Camber: {self.relative_Z_angle:.4f}°"]:
             text.textLine(line)
         c.drawText(text)
         c.save()

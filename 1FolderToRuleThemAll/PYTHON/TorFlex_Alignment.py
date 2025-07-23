@@ -572,8 +572,8 @@ class Torsion_Arm_LJS640:
 
         for i, iqr_scale in enumerate(centers_resid_tol):
             print(f'Iteration {i + 1}: Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
-            centers, trend_z = filter_centers(centers, "z", iqr_scale, plot=True)
-            centers, trend_x = filter_centers(centers, "x", iqr_scale, plot=True)
+            centers, trend_z = filter_centers(centers, "z", iqr_scale, plot=plot)
+            centers, trend_x = filter_centers(centers, "x", iqr_scale, plot=plot)
         
         np.savetxt(r'C:\Users\Public\CapstoneUI\centersFiltered.csv', centers, delimiter=',', header='X Y Z')
 
@@ -621,7 +621,7 @@ class Torsion_Arm_LJS640:
         self.line_fit_rmse = rmse  # Store fit quality
         if show:
             pcd = Numpy_to_Open3D(self.spindle_cloud)
-            visualize_axis(pcd, c_axis, axis_dir, length=100)
+            #visualize_axis(pcd, c_axis, axis_dir, length=100)
 
     def visualize_axes(self, length=0.1):
         # Red

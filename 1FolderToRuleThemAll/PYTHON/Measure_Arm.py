@@ -10,7 +10,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # Load arm scan
     index = 3
     scan1 = Torsion_Arm_LJS640(filename, view_angle_horizontal=45, scanType='live',
-                               cutOff=[-500, 500, -500, 500, -500, 225] # z, x, y min & max
+                               cutOff=[-500, 500, -180, 500, -500, 225] # z, x, y min & max
                                )
     # scan1.show_cloud()
 
@@ -25,8 +25,8 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # print(f'Bar Axis: {scan1.bar_axis}')
 
     # Find spindle
-    #scan1.fit_spindle(axial_cutoff=-112, num_bins=100, circle_fit_tol=0.23, show=True, plot=False)
-    scan1.fit_spindle2(axial_cutoff=-112, num_bins=100, circle_resid_tol=[], min_fit_points=300, centers_resid_tol=[2.0, 1.0, 0.5], show=False, plot=True)
+    #scan1.fit_spindle(axial_cutoff=-100, num_bins=100, circle_fit_tol=0.18, show=True, plot=False)
+    scan1.fit_spindle2(axial_cutoff=-100, num_bins=100, circle_fit_tol=0.18, circle_resid_tol=[], min_fit_points=300, centers_resid_tol=[2.0, 1.0, 0.5], show=False, plot=False)
     # print(f'Spindle Axis: {scan1.axis_dir}')
 
     #scan1.visualize_axes(length=100)
@@ -47,5 +47,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\DelayedScans02.csv')
+    main(filename=r'RealScans\KeyenceAdjusted10.csv')
     
