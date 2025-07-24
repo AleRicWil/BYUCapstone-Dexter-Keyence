@@ -459,7 +459,6 @@ class Torsion_Arm_LJS640:
         bin_edges = np.linspace(t_min, t_max, num_bins + 1)
         centers = []
         count = 0
-        plt.clf()
         for i in range(num_bins):
             mask = (t >= bin_edges[i]) & (t < bin_edges[i + 1])
             if np.sum(mask) < min_points_per_bin:

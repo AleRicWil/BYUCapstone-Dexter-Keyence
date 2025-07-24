@@ -5,6 +5,7 @@ import numpy as np
 import time
 import os
 import threading
+import queue
 from datetime import date
 from reportlab.pdfgen import canvas
 import webbrowser
@@ -19,7 +20,7 @@ ctk.set_default_color_theme("blue")
 class Dexter_Capstone_UI:
     
     # Setup
-    def __init__(self, master):
+    def __init__(self, master, q):
         """Initialize the UI with window settings and file paths."""
         self.master = master
         self.master.title("Dexter-Capstone 2025")
@@ -384,6 +385,7 @@ class Dexter_Capstone_UI:
 
                     self.total_arm_angle = scan_results.get("total_angle", "N/A")
 
+                    #self.master.after(0, q.put(self.show_arm_results))
                     self.master.after(0, self.show_arm_results)
                 else:
                     self.master.after(0, lambda: messagebox.showerror("Error", "Invalid scan results"))
@@ -553,5 +555,6 @@ class Dexter_Capstone_UI:
 
 if __name__ == "__main__":
     root = ctk.CTk()
-    app = Dexter_Capstone_UI(root)
+    q = queue.Queue(maxsize=1)
+    app = Dexter_Capstone_UI(root, q)
     root.mainloop()
