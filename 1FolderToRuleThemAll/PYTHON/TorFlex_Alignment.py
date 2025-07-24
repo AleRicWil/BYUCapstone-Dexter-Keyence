@@ -436,8 +436,8 @@ class Torsion_Arm_LJS640:
         s = delta @ approx_axis
         mask = (s <= axial_cutoff)
         spindle_half = self.cloud.T[mask, :]
-        if show:
-            self.show_cloud(spindle_half.T)
+        # if show:
+        #     self.show_cloud(spindle_half.T)
         
         # Separate spindle from other objects
             # Project all points onto plane orthogonal to bar axis and find spindle
@@ -502,13 +502,13 @@ class Torsion_Arm_LJS640:
                 points_2d = filter_circle(points_2d, center_2d, iqr_scale)
                 center_2d, maxC, radius = fit_circle(points_2d)
 
-                if self.ui:
-                    self.ui.log_message(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points")
-                else:
-                    print(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points")
-
                 residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
                 rmse = np.sqrt(np.mean(residuals**2))
+
+                if self.ui:
+                    self.ui.log_message(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points, rmse: {rmse:.4f}")
+                else:
+                    print(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points, rmse: {rmse:.4f}")
 
                 if plot and i % 10 == 0:
                     # self.show_cloud(points_bin.T)
@@ -525,7 +525,7 @@ class Torsion_Arm_LJS640:
                     plt.axis('equal')
                     plt.xlabel("u-axis")
                     plt.ylabel("v-axis")
-                    # plt.show() 
+                    plt.show() 
 
             if points_2d.shape[0] >= min_fit_points:
                 residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
@@ -590,22 +590,21 @@ class Torsion_Arm_LJS640:
         rmse = np.sqrt(np.mean(distances**2))
 
         if plot:
-            plt.clf()
             fig, axes = plt.subplots(nrows=2, ncols=1)
             plt.setp(axes, xticks=[], yticks=[])
 
             plt.sca(axes[0])
             #plt.title(f"Iteration: {i}, rmse: {rmse:.4f}, IQR Scale: {iqr_scale}")
             plt.scatter(centers[:, 1], centers[:, 0])
-            #plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_x[0] * np.min(centers[:, 1]) + trend_x[1], trend_x[0] * np.max(centers[:, 1]) + trend_x[1]], 
-            #            linestyle='dashed', color='r')
+            plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_x[0] * np.min(centers[:, 1]) + trend_x[1], trend_x[0] * np.max(centers[:, 1]) + trend_x[1]], 
+                       linestyle='dashed', color='r')
             plt.yticks(np.linspace(np.min(centers[:, 0]), np.max(centers[:, 0]), 5))
             plt.ylabel("x-axis")
 
             plt.sca(axes[1])
             plt.scatter(centers[:, 1], centers[:, 2])
-            #plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_z[0] * np.min(centers[:, 1]) + trend_z[1], trend_z[0] * np.max(centers[:, 1]) + trend_z[1]], 
-            #            linestyle='dashed', color='r')
+            plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_z[0] * np.min(centers[:, 1]) + trend_z[1], trend_z[0] * np.max(centers[:, 1]) + trend_z[1]], 
+                       linestyle='dashed', color='r')
             plt.yticks(np.linspace(np.min(centers[:, 2]), np.max(centers[:, 2]), 5))
             plt.xticks(np.linspace(np.min(centers[:, 1]), np.max(centers[:, 1]), 7))
             plt.xlabel("y-axis")
