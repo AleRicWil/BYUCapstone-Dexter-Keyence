@@ -116,6 +116,9 @@ class Dexter_Capstone_UI:
         data = PS.perform_scan().astype(float)
         for i in data:
             i = (i - 2**15) * .0102
+
+        if self.type == 'arm':
+            self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}.csv'
         np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
         
         self.scan_type = 'live'
