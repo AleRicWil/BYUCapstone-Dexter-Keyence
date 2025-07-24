@@ -17,6 +17,7 @@ import pyvista as pv
 import open3d as o3d
 from copy import deepcopy
 from functools import reduce
+import scipy
 
 x = np.linspace(0, 2*np.pi, 100)
 y = np.sin(x)
