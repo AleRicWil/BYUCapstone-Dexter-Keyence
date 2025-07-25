@@ -1488,10 +1488,11 @@ class Torsion_Arm_LJS640:
             self.raw_regions_points.append(raw_points)
             region_panels = self.create_region_grid(raw_points, box_size/2, spindle_points)
             self.raw_regions_panels.append(region_panels)
-            self.visualize_grid(region_panels, box_size/2)
+            if show_flag:
+                self.visualize_grid(region_panels, box_size/2)
             for panel in region_panels:
                 self.fit_cylinder_to_panel(panel)
-                # self.plot_panel_fit(panel)
+                #self.plot_panel_fit(panel)
         self.weight_panels()
         self.spindle_axis = self.fit_axis_to_weighted_spindle_panels()
         # print('Combined regions of similar radius')

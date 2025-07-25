@@ -10,8 +10,8 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # Load arm scan
     index = 3
     scan1 = Torsion_Arm_LJS640(filename, view_angle_horizontal=45, scanType='live',
-                               cutOff=[-500, 500, -500, 500, -500, 225] # z, x, y min & max
-                               )
+                               cutOff=[-500, 500, -500, 500, -500, 225], # z, x, y min & max
+                               ui=ui)
     # scan1.show_cloud()
 
     # Prepare data
@@ -49,5 +49,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\NewerSettings10.csv')
+    main(filename=r'RealScans\BareSpindle02.csv')
     
