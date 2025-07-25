@@ -638,6 +638,16 @@ class Torsion_Arm_LJS640:
 
     def setup_coordinate_system(self):
         """Set up an orthogonal coordinate system based on the bar axis."""
+        approx_axis = self.bar_axis
+        if abs(approx_axis[0]) < min(abs(approx_axis[1]), abs(approx_axis[2])):
+            u = np.array([1, 0, 0])
+        elif abs(approx_axis[1]) < abs(approx_axis[2]):
+            u = np.array([0, 1, 0])
+        else:
+            u = np.array([0, 0, 1])
+        u = u - np.dot(u, approx_axis) * approx_axis
+        u = u / np.linalg.norm(u)
+        v = np.cross(approx_axis, u)
         return u, v
 
     def select_spindle_points(self, axial_cutoff):
