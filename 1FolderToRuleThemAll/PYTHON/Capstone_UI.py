@@ -144,9 +144,9 @@ class Dexter_Capstone_UI:
                 i = (i - 2**15) * .0102
 
             if self.index + 1 < 10:
-                scan_text = f'0{self.scan_count}'
+                scan_text = f'0{self.index}'
             else:
-                scan_text = f'{self.scan_count}'
+                scan_text = f'{self.index}'
 
             os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
             self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar X Angle", "Bar Y Angle", "Bar Z Angle",
