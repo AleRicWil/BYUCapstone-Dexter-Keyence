@@ -520,7 +520,7 @@ class Dexter_Capstone_UI:
                 messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Total Toe:\t{self.relative_X_angle:.4f}°\nTotal Camber:\t{self.relative_Z_angle:.4f}°')
+            results = (f'Total Camber:\t{self.relative_X_angle:.4f}°\nTotal Toe:\t{self.relative_Z_angle:.4f}°')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
@@ -546,11 +546,11 @@ class Dexter_Capstone_UI:
         c.setFont("Courier", 8)
         text = c.beginText(0.25 * 72, 0.85 * 72)
         text.setLeading(10)
-        for line in [f"Arm ID: {self.arm_id}", f"Total Toe: {self.relative_X_angle:.4f}°, Total Camber: {self.relative_Z_angle:.4f}°"]:
+        for line in [f"Arm ID: {self.arm_id}", f"Total Camber: {self.relative_X_angle:.4f}°, Total Toe: {self.relative_Z_angle:.4f}°"]:
             text.textLine(line)
         c.drawText(text)
         c.save()
-        webbrowser.open(pdf_path)
+        #webbrowser.open(pdf_path)
 
 
     # Calibrate hub
