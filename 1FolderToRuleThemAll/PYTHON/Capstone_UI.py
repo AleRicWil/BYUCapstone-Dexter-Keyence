@@ -128,6 +128,49 @@ class Dexter_Capstone_UI:
         elif self.type =='arm':
             self.arm_scan_fileA = self.temp_scan_pathA
             self.calc_arm_alignment()
+
+    def run_repeated_scanner(self):
+        def content(frame):
+            ctk.CTkLabel(frame, text="Scanning...", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
+        if self.type == 'hub':
+            self.setup_screen("TorFlex Axle — Measure Hub Alignment", content, home_button=False)
+        elif self.type == 'arm':
+            self.setup_screen("TorFlex Axle — Measure Arm Alignment", content, home_button=False)
+        self.master.update()
+
+        for self.index in range(self.scan_count):
+            data = PS.perform_scan().astype(float)
+            for i in data:
+                i = (i - 2**15) * .0102
+
+            if self.index + 1 < 10:
+                scan_text = f'0{self.scan_count}'
+            else:
+                scan_text = f'{self.scan_count}'
+
+            os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
+            self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar X Angle", "Bar Y Angle", "Bar Z Angle",
+                                                          "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle",
+                                                          "Relative X Angle", "Relative Y Angle", "Relative Z Angle",
+                                                            "Total Relative Angle", "Date Scanned"])
+            df = pd.read_csv(self.arm_database_path, dtype=str)
+            if self.arm_id not in df["Arm ID"].values:
+                pd.concat([df, pd.DataFrame([{"Arm ID": self.arm_id}])], ignore_index=True).to_csv(self.arm_database_path, index=False)
+                self.update_status(f"Arm ID {self.arm_id}{scan_text} added to database.")
+            else:
+                self.update_status(f"Arm ID {self.arm_id}{scan_text} already exists.")
+
+            if self.type == 'arm':
+                self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}{scan_text}.csv'
+            np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
+            
+            self.scan_type = 'live'
+            if self.type == 'hub':
+                self.hub_scan_fileA = self.temp_scan_pathA
+                self.calc_hub_alignment()
+            elif self.type =='arm':
+                self.arm_scan_fileA = self.temp_scan_pathA
+                self.calc_repeated_arm_alignment()
     
     def validate_file_and_start(self):
         scan_file = self.existing_scan_entry.get().strip()
@@ -141,6 +184,15 @@ class Dexter_Capstone_UI:
         elif self.type == 'arm':
             self.arm_scan_fileA = scan_file
             self.calc_arm_alignment()
+
+    def validate_number(self):
+        scan_count = self.num_scans.get().strip()
+        if not scan_count.isnumeric():
+            messagebox.showerror("Error", "Please enter a valid number of scans.")
+            return
+        else:
+            self.scan_count = int(scan_count)
+            self.run_repeated_scanner()
 
 
     # Home screen
@@ -347,6 +399,11 @@ class Dexter_Capstone_UI:
             ctk.CTkLabel(frame, text=f"Arm ID: {self.arm_id}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
             # ctk.CTkLabel(frame, text=f"Last calibrated: {self.calibration_date}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
             ctk.CTkButton(frame, text="Start Scanner", command=self.run_scanner, width=200).pack(pady=(40, 0))
+            repeated_frame = ctk.CTkFrame(frame)
+            repeated_frame.pack(pady=(40, 0))
+            ctk.CTkButton(repeated_frame, text="Repeated Scan", command=self.validate_number, width=200).pack(side=ctk.LEFT, padx=(0, 10))
+            self.num_scans = ctk.CTkEntry(repeated_frame, placeholder_text="enter number of scans", width=300)
+            self.num_scans.pack(side=ctk.LEFT)
             scan_frame = ctk.CTkFrame(frame)
             scan_frame.pack(pady=(40, 0))
             ctk.CTkButton(scan_frame, text="Measure from existing scan:", command=self.validate_file_and_start, width=200).pack(side=ctk.LEFT, padx=(0, 10))
@@ -404,6 +461,55 @@ class Dexter_Capstone_UI:
         # Start computation in a background thread
         threading.Thread(target=compute_alignment, daemon=True).start()
         self.master.after(100, update_ui)
+
+    def calc_repeated_arm_alignment(self):
+        def content(frame):
+            ctk.CTkLabel(frame, text='Calculating crank arm alignment...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
+        self.setup_screen('Processing Data', content, home_button=False)
+        self.master.update()
+
+        def compute_alignment():
+            try:
+                # self.get_arm_calibration()
+                scan_results = MA.main(self.arm_scan_fileA, self.auto_flag, self.scan_type, ui=self)
+                # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
+                if isinstance(scan_results, dict) and isinstance(scan_results, dict):
+                    self.bar_X_angle = scan_results.get("bar_x_angle", "N/A")
+                    self.bar_Y_angle = scan_results.get("bar_y_angle", "N/A")
+                    self.bar_Z_angle = scan_results.get("bar_z_angle", "N/A")
+
+                    self.spindle_X_angle = scan_results.get("spindle_x_angle", "N/A")
+                    self.spindle_Y_angle = scan_results.get("spindle_y_angle", "N/A")
+                    self.spindle_Z_angle = scan_results.get("spindle_z_angle", "N/A")
+
+                    self.relative_X_angle = scan_results.get("rel_x_angle", "N/A")
+                    self.relative_Y_angle = scan_results.get("rel_y_angle", "N/A")
+                    self.relative_Z_angle = scan_results.get("rel_z_angle", "N/A")
+
+                    self.total_arm_angle = scan_results.get("total_angle", "N/A")
+
+                    #self.master.after(0, q.put(self.show_arm_results))
+                    if (self.index + 1 == self.scan_count):
+                        self.master.after(0, self.show_arm_results)
+                    else:
+                        self.master.after(0, self.save_arm_results)
+                        return
+                else:
+                    self.master.after(0, lambda: messagebox.showerror("Error", "Invalid scan results"))
+                    return
+            except Exception as e:
+                self.master.after(0, lambda e=e: messagebox.showerror("Error", f"Scan failed: {e}"))
+
+        # Keep UI responsive by scheduling periodic updates
+        def update_ui():
+            self.master.update()
+            if threading.active_count() > 1:  # Check if background thread is still running
+                self.master.after(10, update_ui)  # Schedule next update in 10ms
+
+        # Start computation in a background thread
+        threading.Thread(target=compute_alignment, daemon=True).start()
+        self.master.after(100, update_ui)
+    
 
     def show_arm_results(self):
         def content(frame):
