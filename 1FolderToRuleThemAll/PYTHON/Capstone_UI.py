@@ -152,15 +152,15 @@ class Dexter_Capstone_UI:
 
         self.total_arm_angle_sum = 0
 
-        for self.index in range(self.scan_count):
+        for index in range(self.scan_count):
             data = PS.perform_scan().astype(float)
             for i in data:
                 i = (i - 2**15) * .0102
 
-            if self.index + 1 < 10:
-                scan_text = f'{self.arm_id}0{self.index + 1}'
+            if index + 1 < 10:
+                scan_text = f'{self.arm_id}0{index + 1}'
             else:
-                scan_text = f'{self.arm_id}{self.index + 1}'
+                scan_text = f'{self.arm_id}{index + 1}'
 
             os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
             self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar X Angle", "Bar Y Angle", "Bar Z Angle",
@@ -184,7 +184,7 @@ class Dexter_Capstone_UI:
                 self.calc_hub_alignment()
             elif self.type =='arm':
                 self.arm_scan_fileA = self.temp_scan_pathA
-                self.calc_repeated_arm_alignment(scan_text=scan_text)
+                self.calc_repeated_arm_alignment(scan_text=scan_text, index=index)
     
     def validate_file_and_start(self):
         scan_file = self.existing_scan_entry.get().strip()
@@ -475,7 +475,7 @@ class Dexter_Capstone_UI:
         threading.Thread(target=compute_alignment, daemon=True).start()
         self.master.after(100, update_ui)
 
-    def calc_repeated_arm_alignment(self, scan_text):
+    def calc_repeated_arm_alignment(self, scan_text, index):
         def content(frame):
             ctk.CTkLabel(frame, text=f'Calculating crank arm alignment for arm {scan_text}...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
         self.setup_screen('Processing Data', content, home_button=False)
@@ -515,7 +515,7 @@ class Dexter_Capstone_UI:
 
                     self.total_arm_angle_sum += self.total_arm_angle
 
-                    if (self.index + 1 >= self.scan_count):
+                    if (index + 1 >= self.scan_count):
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
                         self.master.after(0, self.show_repeated_arm_results)
                     else:
@@ -557,7 +557,7 @@ class Dexter_Capstone_UI:
     def show_repeated_arm_results(self):
         def content(frame):
             try:
-                self.save_arm_results()
+                self.save_average_arm_results()
                 self.print_arm_results()
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save or print results: {e}")
@@ -608,6 +608,18 @@ class Dexter_Capstone_UI:
                                                                                             self.total_arm_angle, date.today()]
         df.to_csv(self.arm_database_path, index=False)
         self.update_status(f"Scan results saved for Arm ID {scan_text}")
+
+    def save_average_arm_results(self):
+        df = pd.read_csv(self.arm_database_path, dtype=str)
+        df.loc[df["Arm ID"] == self.arm_id, ["Bar X Angle", "Bar Y Angle", "Bar Z Angle",
+                                             "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle", 
+                                             "Relative X Angle", "Relative Y Angle", "Relative Z Angle", 
+                                                "Total Relative Angle", "Date Scanned"]] = [self.bar_X_angle_avg, self.bar_Y_angle_avg, self.bar_Z_angle_avg,
+                                                                                            self.spindle_X_angle_avg, self.spindle_Y_angle_avg, self.spindle_Z_angle_avg, 
+                                                                                            self.relative_X_angle_avg, self.relative_Y_angle_avg, self.relative_Z_angle_avg, 
+                                                                                            self.total_arm_angle_avg, date.today()]
+        df.to_csv(self.arm_database_path, index=False)
+        self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
 
     def print_arm_results(self):
         pdf_path = os.path.join(r"C:\Users\Public\CapstoneUI", f"{self.arm_id}.pdf")
