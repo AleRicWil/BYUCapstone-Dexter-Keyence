@@ -131,7 +131,7 @@ class Dexter_Capstone_UI:
 
     def run_repeated_scanner(self):
         def content(frame):
-            ctk.CTkLabel(frame, text="Scanning...", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
+            ctk.CTkLabel(frame, text=f"Scanning...", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
         if self.type == 'hub':
             self.setup_screen("TorFlex Axle — Measure Hub Alignment", content, home_button=False)
         elif self.type == 'arm':
@@ -144,9 +144,9 @@ class Dexter_Capstone_UI:
                 i = (i - 2**15) * .0102
 
             if self.index + 1 < 10:
-                scan_text = f'0{self.index}'
+                scan_text = f'{self.arm_id}0{self.index + 1}'
             else:
-                scan_text = f'{self.index}'
+                scan_text = f'{self.arm_id}{self.index + 1}'
 
             os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
             self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar X Angle", "Bar Y Angle", "Bar Z Angle",
@@ -154,14 +154,14 @@ class Dexter_Capstone_UI:
                                                           "Relative X Angle", "Relative Y Angle", "Relative Z Angle",
                                                             "Total Relative Angle", "Date Scanned"])
             df = pd.read_csv(self.arm_database_path, dtype=str)
-            if self.arm_id not in df["Arm ID"].values:
-                pd.concat([df, pd.DataFrame([{"Arm ID": self.arm_id}])], ignore_index=True).to_csv(self.arm_database_path, index=False)
-                self.update_status(f"Arm ID {self.arm_id}{scan_text} added to database.")
+            if scan_text not in df["Arm ID"].values:
+                pd.concat([df, pd.DataFrame([{"Arm ID": scan_text}])], ignore_index=True).to_csv(self.arm_database_path, index=False)
+                self.update_status(f"Arm ID {scan_text} added to database.")
             else:
-                self.update_status(f"Arm ID {self.arm_id}{scan_text} already exists.")
+                self.update_status(f"Arm ID {scan_text} already exists.")
 
             if self.type == 'arm':
-                self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}{scan_text}.csv'
+                self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{scan_text}.csv'
             np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
             
             self.scan_type = 'live'
@@ -170,7 +170,7 @@ class Dexter_Capstone_UI:
                 self.calc_hub_alignment()
             elif self.type =='arm':
                 self.arm_scan_fileA = self.temp_scan_pathA
-                self.calc_repeated_arm_alignment()
+                self.calc_repeated_arm_alignment(scan_text=scan_text)
     
     def validate_file_and_start(self):
         scan_file = self.existing_scan_entry.get().strip()
@@ -445,7 +445,6 @@ class Dexter_Capstone_UI:
 
                     self.total_arm_angle = scan_results.get("total_angle", "N/A")
 
-                    #self.master.after(0, q.put(self.show_arm_results))
                     self.master.after(0, self.show_arm_results)
                 else:
                     self.master.after(0, lambda: messagebox.showerror("Error", "Invalid scan results"))
@@ -462,9 +461,9 @@ class Dexter_Capstone_UI:
         threading.Thread(target=compute_alignment, daemon=True).start()
         self.master.after(100, update_ui)
 
-    def calc_repeated_arm_alignment(self):
+    def calc_repeated_arm_alignment(self, scan_text):
         def content(frame):
-            ctk.CTkLabel(frame, text='Calculating crank arm alignment...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
+            ctk.CTkLabel(frame, text=f'Calculating crank arm alignment for arm {scan_text}...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
         self.setup_screen('Processing Data', content, home_button=False)
         self.master.update()
 
@@ -488,11 +487,11 @@ class Dexter_Capstone_UI:
 
                     self.total_arm_angle = scan_results.get("total_angle", "N/A")
 
-                    #self.master.after(0, q.put(self.show_arm_results))
                     if (self.index + 1 == self.scan_count):
+                        self.master.after(0, self.save_repeated_arm_results, scan_text)
                         self.master.after(0, self.show_arm_results)
                     else:
-                        self.master.after(0, self.save_arm_results)
+                        self.master.after(0, self.save_repeated_arm_results, scan_text)
                         return
                 else:
                     self.master.after(0, lambda: messagebox.showerror("Error", "Invalid scan results"))
@@ -538,6 +537,18 @@ class Dexter_Capstone_UI:
                                                                                             self.total_arm_angle, date.today()]
         df.to_csv(self.arm_database_path, index=False)
         self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
+
+    def save_repeated_arm_results(self, scan_text):
+        df = pd.read_csv(self.arm_database_path, dtype=str)
+        df.loc[df["Arm ID"] == scan_text, ["Bar X Angle", "Bar Y Angle", "Bar Z Angle",
+                                             "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle", 
+                                             "Relative X Angle", "Relative Y Angle", "Relative Z Angle", 
+                                                "Total Relative Angle", "Date Scanned"]] = [self.bar_X_angle, self.bar_Y_angle, self.bar_Z_angle,
+                                                                                            self.spindle_X_angle, self.spindle_Y_angle, self.spindle_Z_angle, 
+                                                                                            self.relative_X_angle, self.relative_Y_angle, self.relative_Z_angle, 
+                                                                                            self.total_arm_angle, date.today()]
+        df.to_csv(self.arm_database_path, index=False)
+        self.update_status(f"Scan results saved for Arm ID {scan_text}")
 
     def print_arm_results(self):
         pdf_path = os.path.join(r"C:\Users\Public\CapstoneUI", f"{self.arm_id}.pdf")

@@ -22,7 +22,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
 
     # Find bar faces
     scan1.fit_bar_faces(plotNum=0, cutOff=[-500, 0], show=False)
-    print(f'Bar Axis: {scan1.bar_axis}')
+    #print(f'Bar Axis: {scan1.bar_axis}')
 
     # Find spindle
     #scan1.fit_spindle(axial_cutoff=-100, num_bins=100, circle_fit_tol=0.18, show=True, plot=False)
