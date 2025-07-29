@@ -554,36 +554,36 @@ class Dexter_Capstone_UI:
             self.master.bind("<Return>", lambda event: self.measure_arm())
         self.setup_screen("Results", content)
 
-        def show_repeated_arm_results(self):
-            def content(frame):
-                try:
-                    self.save_arm_results()
-                    self.print_arm_results()
-                except Exception as e:
-                    messagebox.showerror("Error", f"Failed to save or print results: {e}")
-                ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
-                ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-                results = (f'Average Camber:\t{self.relative_X_angle_avg:.4f}°\nRelative Toe:\t{self.relative_Z_angle_avg:.4f}°')
-                ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
-                ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
-                ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
-                self.master.bind("<Return>", lambda event: self.measure_arm())
+    def show_repeated_arm_results(self):
+        def content(frame):
+            try:
+                self.save_arm_results()
+                self.print_arm_results()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save or print results: {e}")
+            ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
+            ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
+            results = (f'Average Camber:\t{self.relative_X_angle_avg:.4f}°\nRelative Toe:\t{self.relative_Z_angle_avg:.4f}°')
+            ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
+            ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
+            ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
+            self.master.bind("<Return>", lambda event: self.measure_arm())
 
-            self.bar_X_angle_avg = self.bar_X_angle_sum / self.scan_count
-            self.bar_Y_angle_avg = self.bar_Y_angle_sum / self.scan_count
-            self.bar_Z_angle_avg = self.bar_Z_angle_sum / self.scan_count
+        self.bar_X_angle_avg = self.bar_X_angle_sum / self.scan_count
+        self.bar_Y_angle_avg = self.bar_Y_angle_sum / self.scan_count
+        self.bar_Z_angle_avg = self.bar_Z_angle_sum / self.scan_count
 
-            self.spindle_X_angle_avg = self.spindle_X_angle_sum / self.scan_count
-            self.spindle_Y_angle_avg = self.spindle_Y_angle_sum / self.scan_count
-            self.spindle_Z_angle_avg = self.spindle_Z_angle_sum / self.scan_count
+        self.spindle_X_angle_avg = self.spindle_X_angle_sum / self.scan_count
+        self.spindle_Y_angle_avg = self.spindle_Y_angle_sum / self.scan_count
+        self.spindle_Z_angle_avg = self.spindle_Z_angle_sum / self.scan_count
 
-            self.relative_X_angle_avg = self.relative_X_angle_sum / self.scan_count
-            self.relative_X_angle_avg = self.relative_Y_angle_sum / self.scan_count
-            self.relative_X_angle_avg = self.relative_Z_angle_sum / self.scan_count
+        self.relative_X_angle_avg = self.relative_X_angle_sum / self.scan_count
+        self.relative_Y_angle_avg = self.relative_Y_angle_sum / self.scan_count
+        self.relative_Z_angle_avg = self.relative_Z_angle_sum / self.scan_count
 
-            self.total_arm_angle_avg = self.total_arm_angle_sum / self.scan_count
+        self.total_arm_angle_avg = self.total_arm_angle_sum / self.scan_count
 
-            self.setup_screen("Results", content)
+        self.setup_screen("Results", content)
 
     def save_arm_results(self):
         df = pd.read_csv(self.arm_database_path, dtype=str)
