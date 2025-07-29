@@ -138,6 +138,20 @@ class Dexter_Capstone_UI:
             self.setup_screen("TorFlex Axle — Measure Arm Alignment", content, home_button=False)
         self.master.update()
 
+        self.bar_X_angle_sum = 0
+        self.bar_Y_angle_sum = 0
+        self.bar_Z_angle_sum = 0
+
+        self.spindle_X_angle_sum = 0
+        self.spindle_Y_angle_sum = 0
+        self.spindle_Z_angle_sum = 0
+
+        self.relative_X_angle_sum = 0
+        self.relative_Y_angle_sum = 0
+        self.relative_Z_angle_sum = 0
+
+        self.total_arm_angle_sum = 0
+
         for self.index in range(self.scan_count):
             data = PS.perform_scan().astype(float)
             for i in data:
@@ -487,9 +501,23 @@ class Dexter_Capstone_UI:
 
                     self.total_arm_angle = scan_results.get("total_angle", "N/A")
 
-                    if (self.index + 1 == self.scan_count):
+                    self.bar_X_angle_sum += self.bar_X_angle
+                    self.bar_Y_angle_sum += self.bar_Y_angle
+                    self.bar_Z_angle_sum += self.bar_Z_angle
+
+                    self.spindle_X_angle_sum += self.spindle_X_angle
+                    self.spindle_Y_angle_sum += self.spindle_Y_angle
+                    self.spindle_Z_angle_sum += self.spindle_Z_angle
+
+                    self.relative_X_angle_sum += self.relative_X_angle
+                    self.relative_Y_angle_sum += self.relative_Y_angle
+                    self.relative_Z_angle_sum += self.relative_Z_angle
+
+                    self.total_arm_angle_sum += self.total_arm_angle
+
+                    if (self.index + 1 >= self.scan_count):
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
-                        self.master.after(0, self.show_arm_results)
+                        self.master.after(0, self.show_repeated_arm_results)
                     else:
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
                         return
@@ -525,6 +553,37 @@ class Dexter_Capstone_UI:
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
             self.master.bind("<Return>", lambda event: self.measure_arm())
         self.setup_screen("Results", content)
+
+        def show_repeated_arm_results(self):
+            def content(frame):
+                try:
+                    self.save_arm_results()
+                    self.print_arm_results()
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to save or print results: {e}")
+                ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
+                ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
+                results = (f'Average Camber:\t{self.relative_X_angle_avg:.4f}°\nRelative Toe:\t{self.relative_Z_angle_avg:.4f}°')
+                ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
+                ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
+                ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
+                self.master.bind("<Return>", lambda event: self.measure_arm())
+
+            self.bar_X_angle_avg = self.bar_X_angle_sum / self.scan_count
+            self.bar_Y_angle_avg = self.bar_Y_angle_sum / self.scan_count
+            self.bar_Z_angle_avg = self.bar_Z_angle_sum / self.scan_count
+
+            self.spindle_X_angle_avg = self.spindle_X_angle_sum / self.scan_count
+            self.spindle_Y_angle_avg = self.spindle_Y_angle_sum / self.scan_count
+            self.spindle_Z_angle_avg = self.spindle_Z_angle_sum / self.scan_count
+
+            self.relative_X_angle_avg = self.relative_X_angle_sum / self.scan_count
+            self.relative_X_angle_avg = self.relative_Y_angle_sum / self.scan_count
+            self.relative_X_angle_avg = self.relative_Z_angle_sum / self.scan_count
+
+            self.total_arm_angle_avg = self.total_arm_angle_sum / self.scan_count
+
+            self.setup_screen("Results", content)
 
     def save_arm_results(self):
         df = pd.read_csv(self.arm_database_path, dtype=str)
