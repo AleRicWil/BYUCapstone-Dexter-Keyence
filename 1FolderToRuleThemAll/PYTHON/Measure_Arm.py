@@ -16,25 +16,27 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
 
     # Prepare data
     scan1.center_cloud()
-    #scan1.show_cloud()
-    # scan1.rotate_cloud(axis='z', angle=90)
     # scan1.show_cloud()
+    # scan1.rotate_cloud(axis='z', angle=180)
+    scan1.show_cloud()
 
     # Find bar faces
-    scan1.fit_bar_faces(plotNum=0, cutOff=[-500, 0], show=False)
-    #print(f'Bar Axis: {scan1.bar_axis}')
+    scan1.fit_bar_faces(plotNum=0, cutOff=[-25, 300], show=True)
+    # print(f'Bar Axis: {scan1.bar_axis}')
 
     # Find spindle
     #scan1.fit_spindle(axial_cutoff=-100, num_bins=100, circle_fit_tol=0.18, show=True, plot=False)
     scan1.fit_spindle2(axial_cutoff=-100, num_bins=100, circle_fit_tol=0.2, circle_resid_tol=[1.0], min_fit_points=300, centers_resid_tol=[2.0], show=False, plot=False)
     # print(f'Spindle Axis: {scan1.axis_dir}')
-    #scan1.fit_spindle_3D(axial_cutoff=-110, show_flag=True, box_size=8.0)
+    #scan1.fit_spindle_3D3(axial_cutoff=-105, side='left', show_flag=True, box_size=8.0)
     print(f'Spindle Axis: {scan1.spindle_axis}')
 
     # scan1.visualize_axes(length=100)
 
-    scan1.calc_angles()
+    # scan1.calc_angles()
+    scan1.calc_toe_camber(side='left')
     scan1.print_angles()    
+    # scan1.plot_vectors()
 
     end = time.time()
 
@@ -42,12 +44,12 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
 
     print(f'\nTotal Duration: {end-start:.3f}')
 
-    results = {"bar_x_angle": scan1.bar_angle[0], "bar_y_angle": scan1.bar_angle[1], "bar_z_angle": scan1.bar_angle[2], 
-               "spindle_x_angle": scan1.spindle_angle[0], "spindle_y_angle": scan1.spindle_angle[1], "spindle_z_angle": scan1.spindle_angle[2],
-               "rel_x_angle": scan1.relative_angle[0], "rel_y_angle": scan1.relative_angle[1], "rel_z_angle": scan1.relative_angle[2],
-               "total_angle": scan1.total_angle}
+    results = {"bar_toe": scan1.bar_align[0], "bar_camber": scan1.bar_align[1], 
+               "spindle_toe": scan1.spindle_align[0], "spindle_camber": scan1.spindle_align[1],
+               "toe": scan1.toe, "camber": scan1.camber, 
+               "total_misalign": scan1.total_misalign}
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\BareSpindle02.csv')
+    main(filename=r'RealScans\BigSpindleII10.csv')
     
