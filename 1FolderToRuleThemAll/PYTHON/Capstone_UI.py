@@ -138,6 +138,8 @@ class Dexter_Capstone_UI:
             self.setup_screen("TorFlex Axle — Measure Arm Alignment", content, home_button=False)
         self.master.update()
 
+        self.total_scans = self.scan_count
+
         self.bar_X_angle_sum = 0
         self.bar_Y_angle_sum = 0
         self.bar_Z_angle_sum = 0
@@ -177,14 +179,21 @@ class Dexter_Capstone_UI:
             if self.type == 'arm':
                 self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{scan_text}.csv'
             np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
-            
+        
+        for self.index in range(self.scan_count):
+            if self.index + 1 < 10:
+                scan_text = f'{self.arm_id}0{self.index + 1}'
+            else:
+                scan_text = f'{self.arm_id}{self.index + 1}' 
+
             self.scan_type = 'live'
             if self.type == 'hub':
                 self.hub_scan_fileA = self.temp_scan_pathA
                 self.calc_hub_alignment()
             elif self.type =='arm':
+                self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{scan_text}.csv'
                 self.arm_scan_fileA = self.temp_scan_pathA
-                self.calc_repeated_arm_alignment(scan_text=scan_text, index=index)
+                self.calc_repeated_arm_alignment(scan_text=scan_text)
     
     def validate_file_and_start(self):
         scan_file = self.existing_scan_entry.get().strip()
@@ -475,7 +484,7 @@ class Dexter_Capstone_UI:
         threading.Thread(target=compute_alignment, daemon=True).start()
         self.master.after(100, update_ui)
 
-    def calc_repeated_arm_alignment(self, scan_text, index):
+    def calc_repeated_arm_alignment(self, scan_text):
         def content(frame):
             ctk.CTkLabel(frame, text=f'Calculating crank arm alignment for arm {scan_text}...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
         self.setup_screen('Processing Data', content, home_button=False)
@@ -515,7 +524,7 @@ class Dexter_Capstone_UI:
 
                     self.total_arm_angle_sum += self.total_arm_angle
 
-                    if (index + 1 >= self.scan_count):
+                    if (self.index + 1 >= self.scan_count):
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
                         self.master.after(0, self.show_repeated_arm_results)
                     else:
@@ -523,19 +532,22 @@ class Dexter_Capstone_UI:
                         return
                 else:
                     self.master.after(0, lambda: messagebox.showerror("Error", "Invalid scan results"))
+                    self.total_scans -= 1
                     return
             except Exception as e:
                 self.master.after(0, lambda e=e: messagebox.showerror("Error", f"Scan failed: {e}"))
 
-        # Keep UI responsive by scheduling periodic updates
-        def update_ui():
-            self.master.update()
-            if threading.active_count() > 1:  # Check if background thread is still running
-                self.master.after(10, update_ui)  # Schedule next update in 10ms
+        compute_alignment()
 
-        # Start computation in a background thread
-        threading.Thread(target=compute_alignment, daemon=True).start()
-        self.master.after(100, update_ui)
+        # Keep UI responsive by scheduling periodic updates
+        # def update_ui():
+        #     self.master.update()
+        #     if threading.active_count() > 1:  # Check if background thread is still running
+        #         self.master.after(10, update_ui)  # Schedule next update in 10ms
+
+        # # Start computation in a background thread
+        # threading.Thread(target=compute_alignment, daemon=True).start()
+        # self.master.after(100, update_ui)
     
 
     def show_arm_results(self):
@@ -569,19 +581,19 @@ class Dexter_Capstone_UI:
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
             self.master.bind("<Return>", lambda event: self.measure_arm())
 
-        self.bar_X_angle_avg = self.bar_X_angle_sum / self.scan_count
-        self.bar_Y_angle_avg = self.bar_Y_angle_sum / self.scan_count
-        self.bar_Z_angle_avg = self.bar_Z_angle_sum / self.scan_count
+        self.bar_X_angle_avg = self.bar_X_angle_sum / self.total_scans
+        self.bar_Y_angle_avg = self.bar_Y_angle_sum / self.total_scans
+        self.bar_Z_angle_avg = self.bar_Z_angle_sum / self.total_scans
 
-        self.spindle_X_angle_avg = self.spindle_X_angle_sum / self.scan_count
-        self.spindle_Y_angle_avg = self.spindle_Y_angle_sum / self.scan_count
-        self.spindle_Z_angle_avg = self.spindle_Z_angle_sum / self.scan_count
+        self.spindle_X_angle_avg = self.spindle_X_angle_sum / self.total_scans
+        self.spindle_Y_angle_avg = self.spindle_Y_angle_sum / self.total_scans
+        self.spindle_Z_angle_avg = self.spindle_Z_angle_sum / self.total_scans
 
-        self.relative_X_angle_avg = self.relative_X_angle_sum / self.scan_count
-        self.relative_Y_angle_avg = self.relative_Y_angle_sum / self.scan_count
-        self.relative_Z_angle_avg = self.relative_Z_angle_sum / self.scan_count
+        self.relative_X_angle_avg = self.relative_X_angle_sum / self.total_scans
+        self.relative_Y_angle_avg = self.relative_Y_angle_sum / self.total_scans
+        self.relative_Z_angle_avg = self.relative_Z_angle_sum / self.total_scans
 
-        self.total_arm_angle_avg = self.total_arm_angle_sum / self.scan_count
+        self.total_arm_angle_avg = self.total_arm_angle_sum / self.total_scans
 
         self.setup_screen("Results", content)
 
