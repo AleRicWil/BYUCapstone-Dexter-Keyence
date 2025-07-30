@@ -191,7 +191,7 @@ class Torsion_Arm_LJS640:
         self.min_x_width = 579
         self.reference_z_depth = 1116
         self.min_z_depth = 936
-        self.exp_norm = Normal_of_Rotated_Plane(axis='y', angle=view_angle_horizontal)
+        self.exp_norm = Normal_of_Rotated_Plane(axis='x', angle=view_angle_horizontal)
         
         if scanType == 'real' or scanType == 'live':
             data = np.loadtxt(filename, delimiter=',', dtype=np.float64)
@@ -217,12 +217,12 @@ class Torsion_Arm_LJS640:
             scale_factors = np.where(z <= 0, 0.2, 0.2 + xScaleSlope*z)
             x *= scale_factors
 
-            valid_mask = (x > cutOff[2]) & (x < cutOff[3]) & (y > cutOff[4]) & (y < cutOff[5]) & (z >= cutOff[0]) & (z <= cutOff[1])
+            valid_mask = (x > cutOff[0]) & (x < cutOff[1]) & (y > cutOff[2]) & (y < cutOff[3]) & (z >= cutOff[4]) & (z <= cutOff[5])
             x = x[valid_mask]
             y = y[valid_mask]
             z = z[valid_mask]
 
-            self.cloud = np.array([y, -x, z])
+            self.cloud = np.array([x, y, z])
             self.numPoints = self.cloud.shape[1]
         
     def downsample_cloud(self, maxPoints):
@@ -245,8 +245,9 @@ class Torsion_Arm_LJS640:
             Plot_Cloud_PyVista(altCloud, pointSize=0.5)
 
     def fit_bar_faces(self, cutOff=[-500, 500], plotNum=0, show=False):
-        barCloud = Trim_Cloud(self.cloud, 'Y', cutOff)
-        #self.show_cloud(barCloud)
+        barCloud = Trim_Cloud(self.cloud, 'x', cutOff)
+        barCloud = Trim_Cloud(barCloud, 'z', [70, 500])
+        # print('Showing bar cloud'); self.show_cloud(barCloud)
 
         # Find primary face
         barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)
@@ -259,7 +260,7 @@ class Torsion_Arm_LJS640:
         barPrimaryNormal = barPrimaryPlane[0:3]
 
         # Find secondary face, which is perpendicular to primary
-        exp_secondary_norm = Rotate(barPrimaryNormal, axis='y', angle=90.0)
+        exp_secondary_norm = Rotate(barPrimaryNormal, axis='x', angle=90.0)
         barSecondaryFaces = Cloud_Expected_Normal_Filter(barCloud, exp_secondary_norm, 3)
         secondaryLedges, secondaryLedgeAvgs = Find_Ledges_Along_Normal(barSecondaryFaces, normal=exp_secondary_norm, ledgeThreshold=self.ledgeThreshold, shortLedge=0.1, closeLedges=self.closeLedges)
         
@@ -275,6 +276,8 @@ class Torsion_Arm_LJS640:
 
         # Bar's axis is the intersection of primary and secondary faces
         self.bar_axis = np.cross(barPrimaryNormal, barSecondaryNormal)
+        if self.bar_axis[0] < 0:
+            self.bar_axis = -self.bar_axis
         self.bar_faces = np.hstack((self.barPrimaryFace, self.barSecondaryFace))
         highest_y_idx = np.argmax(self.bar_faces[1])
         self.bar_faces_highest_point = self.bar_faces[:, highest_y_idx]
@@ -417,7 +420,7 @@ class Torsion_Arm_LJS640:
             self.fit_params = None  # dict or None, fit parameters
             self.fit_points_2d = None
             self.good_fit_flag = True
-            self.region_rmse = None
+            self.region_stddev = None
             self.weight = None
 
     def setup_coordinate_system(self):
@@ -434,12 +437,13 @@ class Torsion_Arm_LJS640:
         v = np.cross(approx_axis, u)
         return u, v
 
-    def select_spindle_points(self, axial_cutoff):
+    def select_spindle_points(self, axial_cutoff, side):
         """Select points along the bar axis below the axial cutoff."""
-        starting_point = self.bar_faces_highest_point
-        delta = self.cloud.T - starting_point
-        s = delta @ self.bar_axis
-        mask = (s <= axial_cutoff)
+        projection = np.dot(self.cloud.T, self.bar_axis)
+        if side == 'left':
+            mask = (projection <= axial_cutoff)
+        elif side == 'right':
+            mask = (projection >= axial_cutoff)
         return self.cloud.T[mask, :]
 
     def project_to_xy(self, points_3d):
@@ -514,6 +518,34 @@ class Torsion_Arm_LJS640:
                     panel_center = u_i * self.axis_xy + v_j * self.tangential_xy
                     panel = self.Panel(center=panel_center, size=current_size, points=panel_points.T)
                     panels.append(panel)
+        return panels
+
+    def create_slices(self, current_size, points_3d):
+        """
+        Create a grid of panels with specified size.
+
+        Args:
+            current_size (float): Size of panels in mm.
+            u_values (array): Axial coordinates in 2D plane.
+            v_values (array): Tangential coordinates in 2D plane.
+            points_3d (array): 3D points to be gridded.
+
+        Returns:
+            tuple: (list of panels, bounds as (u_lower, u_upper, v_lower, v_upper))
+        """
+        slice_spacing = current_size / self.overlap_factor
+        u_grid = np.arange(self.u_lower + slice_spacing/2, self.u_upper, slice_spacing)
+        panels = []
+        for u_i in u_grid:
+            u_min = u_i - current_size / 2
+            u_max = u_i + current_size / 2
+            mask = (self.u_values >= u_min) & (self.u_values <= u_max)
+            panel_points = points_3d[mask]
+            if panel_points.shape[0] > 50:
+                v_centroid = np.mean(self.v_values[mask])
+                panel_center = u_i * self.axis_xy + v_centroid * self.tangential_xy
+                panel = self.Panel(center=panel_center, size=current_size, points=panel_points.T)
+                panels.append(panel)
         return panels
 
     def create_region_grid(self, region_points, box_size, points_3d):
@@ -627,11 +659,18 @@ class Torsion_Arm_LJS640:
         # for i in sorted(to_remove, reverse=True):
         #     del self.panels[i]
 
-    def fit_cylinder_to_panel(self, panel):
+    def fit_cylinder_to_panel(self, panel, knn=10):
         """Fit a cylinder to a panel's points and optionally visualize the fit."""
         panel_points = panel.points
         pcd = Numpy_to_Open3D(panel_points)
-        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=10))
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=knn))
+        approximate_center = np.mean(panel.points.T, axis=0)
+        normals = np.asarray(pcd.normals)
+        for i, (point, normal) in enumerate(zip(np.asarray(pcd.points), normals)):
+            to_center = approximate_center - point
+            if np.dot(normal, to_center) > 0:  # Flip if pointing toward center
+                normals[i] = -normal
+        pcd.normals = o3d.utility.Vector3dVector(normals)
         
         normals = np.asarray(pcd.normals)
         M = np.sum([np.outer(n, n) for n in normals], axis=0)
@@ -660,18 +699,55 @@ class Torsion_Arm_LJS640:
                 return None
             center_2d = [-a / 2, -b / 2]
             radius = np.sqrt((a/2)**2 + (b/2)**2 - c)
-            residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + 
-                               (points_2d[:, 1] - center_2d[1])**2) - radius
-            rmse = np.sqrt(np.mean(residuals**2))
+            radii = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2)
+            stddev = np.std(radii)
             C = np.mean(panel_points.T, axis=0)
             t = np.dot(C, axis)
             center_3d = center_2d[0] * u + center_2d[1] * v + t * axis
                 
             panel.fit_points_2d = points_2d
             panel.fit_params = {'axis': axis, 'colinearity': colinearity, 'center_3d': center_3d, 
-                                'radius': radius, 'rmse': rmse, 'center_2d': center_2d}
+                                'radius': radius, 'stddev': stddev, 'center_2d': center_2d}
         except np.linalg.LinAlgError:
             pass
+
+    def visualize_panel_normals(self, panel, knn=10):
+        """
+        Visualizes a panel's points and their estimated normals.
+
+        Args:
+            panel: Panel object with points and normals attributes.
+        """
+        # Create point cloud from panel points
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(panel.points.T)  # Shape (n_points, 3)
+        
+        # Estimate normals if not already computed
+        if not pcd.has_normals():
+            pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=knn))
+            approximate_center = np.mean(panel.points.T, axis=0)
+            normals = np.asarray(pcd.normals)
+            for i, (point, normal) in enumerate(zip(np.asarray(pcd.points), normals)):
+                to_center = approximate_center - point
+                if np.dot(normal, to_center) > 0:  # Flip if pointing toward center
+                    normals[i] = -normal
+            pcd.normals = o3d.utility.Vector3dVector(normals)
+        
+        # Create visualization window
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(window_name="Panel Normals")
+        
+        # Add point cloud
+        vis.add_geometry(pcd)
+        
+        # Configure rendering options to show normals
+        opt = vis.get_render_option()
+        opt.point_show_normal = True  # Display normals
+        opt.point_size = 3.0  # Point size for visibility
+        
+        # Run visualization
+        vis.run()
+        vis.destroy_window()
 
     def fit_axis_to_weighted_spindle_panels(self):
         """
@@ -719,6 +795,77 @@ class Torsion_Arm_LJS640:
         axis = axis / np.linalg.norm(axis)
         return axis
 
+    def fit_axis_to_weighted_spindle_panels2(self, knn=10, view_normals=False):
+        """
+        Fits the spindle axis using weighted panels, where each panel's weight applies to all its points.
+        
+        Returns:
+            axis: The computed spindle axis as a unit vector.
+        """
+        # Collect points and weights from panels with non-None weights
+        all_points = []
+        all_weights = []
+        centers = []
+        for panel in self.panel_groups:
+            if not panel.weight == None:  # Check for non-None weight
+                points = panel.points.T  # Transpose assumes points are in columns
+                weight = panel.weight; print('weight:', weight)
+                all_points.append(points)
+                all_weights.append(np.full(points.shape[0], weight))
+            centers.append(panel.fit_params['center_3d'])
+        
+        if not all_points:
+            raise ValueError("No panels with non-None weights found.")
+        
+        # Concatenate all points and weights
+        all_points = np.vstack(all_points)
+        all_weights = np.concatenate(all_weights)
+        
+        # Create Open3D point cloud and estimate normals
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(all_points)
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=knn))
+        approximate_center = np.mean(centers, axis=0)
+        normals = np.asarray(pcd.normals)
+        for i, (point, normal) in enumerate(zip(np.asarray(pcd.points), normals)):
+            to_center = approximate_center - point
+            if np.dot(normal, to_center) > 0:  # Flip if pointing toward center
+                normals[i] = -normal
+        pcd.normals = o3d.utility.Vector3dVector(normals)
+        normals = np.asarray(pcd.normals)
+
+        if view_normals:
+            # Create visualization window
+            vis = o3d.visualization.Visualizer()
+            vis.create_window(window_name="Panel Normals")
+            
+            # Add point cloud
+            vis.add_geometry(pcd)
+            
+            # Configure rendering options to show normals
+            opt = vis.get_render_option()
+            opt.point_show_normal = True  # Display normals
+            opt.point_size = 3.0  # Point size for visibility
+            
+            # Run visualization
+            vis.run()
+            vis.destroy_window()
+        
+        # Compute weighted M matrix
+        M = np.zeros((3, 3))
+        for i in range(len(normals)):
+            n = normals[i]
+            w = all_weights[i]
+            M += w * np.outer(n, n)
+        
+        # Compute eigenvalues and eigenvectors
+        eigenvalues, eigenvectors = eigh(M)
+        axis = eigenvectors[:, np.argmin(eigenvalues)]
+        
+        # Ensure axis is a unit vector
+        axis = axis / np.linalg.norm(axis)
+        return axis
+
     def visualize_grid(self, panels, panel_size):
         """Visualize the 2D projection with grid overlay."""
         plt.scatter(self.points_xy[:, 0], self.points_xy[:, 1], s=1, label='Points')
@@ -726,7 +873,7 @@ class Torsion_Arm_LJS640:
             if int(panel.size) == int(panel_size):
                 center = panel.center
                 half_size = panel.size / 2
-                edgecolor = 'green'
+                edgecolor = 'orange'
                 rect = plt.Rectangle((center[0] - half_size, center[1] - half_size),
                                     panel.size, panel.size,
                                     fill=False, edgecolor=edgecolor, linewidth=0.5)
@@ -770,7 +917,7 @@ class Torsion_Arm_LJS640:
                 if panel.good_fit_flag == True:
                     center = panel.center
                     half_size = panel.size / 2
-                    edgecolor = 'green'
+                    edgecolor = 'orange'
                     plt.scatter(center[0], center[1], c='red', s=20)
                     rect = plt.Rectangle(
                         (center[0] - half_size, center[1] - half_size),
@@ -814,23 +961,24 @@ class Torsion_Arm_LJS640:
         plt.legend()
         plt.show()
 
-    def plot_panel_fit(self, panel):
+    def plot_panel_fit(self, panel, show_normals=False):
         """
         Plots a panel's points and its fitted cylinder surface in 3D using Matplotlib.
 
         Parameters:
             panel_points (array): 3D points of the panel, shape (3, n_points).
-            cylinder_params (dict): Cylinder parameters {'axis', 'center_3d', 'radius', 'rmse'} or None.
+            cylinder_params (dict): Cylinder parameters {'axis', 'center_3d', 'radius', 'stddev'} or None.
         """
         if panel.fit_params is None:
             return
         axis = panel.fit_params['axis']
         center_3d = panel.fit_params['center_3d']
         radius = panel.fit_params['radius']
-        rmse = panel.fit_params['rmse']
+        stddev = panel.fit_params['stddev']
         center_2d = panel.fit_params['center_2d']
         colinearity = panel.fit_params['colinearity']
         points_2d = panel.fit_points_2d
+        size = panel.size
         
         #region PLOT 2D FIT
         theta = np.linspace(0, 2 * np.pi, 100)
@@ -841,7 +989,7 @@ class Torsion_Arm_LJS640:
         plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
         plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
         plt.scatter(center_2d[0], center_2d[1])
-        plt.title(f"rmse: {rmse:.4f}")
+        plt.title(f"stddev: {stddev:.4f}, radius: {radius:.2f}, center_xy: {center_2d[0]:.2f}, {center_2d[1]:.2f}")
         plt.axis('equal')
         plt.xlabel("u-axis")
         plt.ylabel("v-axis")
@@ -875,23 +1023,24 @@ class Torsion_Arm_LJS640:
         ax.set_xlabel('X (mm)')
         ax.set_ylabel('Y (mm)')
         ax.set_zlabel('Z (mm)')
-        ax.set_title(f'Panel Points and Cylinder Fit.\nRadial RMSE: {rmse:.4f} \
-                     Bar Colinearity: {colinearity:.4f}')
+        ax.set_title(f'Panel Points and Cylinder Fit\nSize: {size:.1f}mm, Bar Colinearity: {colinearity:.4f}')
         #endregion
-
+        
         plt.show()
 
     def group_panels_by_radius(self, radius_tolerance=0.1):
         """
-        Groups panels by their radius, dynamically identifying distinct radius groups.
+        Combines points from panels with similar radii into a single panel per radius group.
+
         Args:
-            radius_tolerance (float): Maximum radius difference (mm) to consider two radii the same (not used in this implementation).
+            radius_tolerance (float): Maximum radius difference (mm) to consider two radii the same.
+
         Stores:
-            self.panel_groups: Dict with radius values as keys and lists of panels as values.
+            self.panel_groups: List of combined panels with radius attribute set.
         """
-        self.panel_groups = {}
+        self.panel_groups = []
         
-        # Filter panels with a valid radius in fit_params
+        # Filter panels with valid radius in fit_params
         valid_panels = [panel for panel in self.panels if panel.fit_params and 'radius' in panel.fit_params]
         if not valid_panels:
             return
@@ -901,14 +1050,12 @@ class Torsion_Arm_LJS640:
         
         # Handle single panel case
         if len(sorted_panels) == 1:
-            avg_radius = sorted_panels[0].fit_params['radius']
-            self.panel_groups[round(avg_radius, 2)] = [sorted_panels[0]]
+            sorted_panels[0].radius = sorted_panels[0].fit_params['radius']
+            self.panel_groups.append(sorted_panels[0])
             return
         
         # Extract radii and compute step sizes
         radii = [p.fit_params['radius'] for p in sorted_panels]
-        steps = np.diff(radii)
-        average_step = np.mean(steps)
         
         # Group panels based on step sizes
         groups = []
@@ -919,8 +1066,8 @@ class Torsion_Arm_LJS640:
             current_radius = panel.fit_params['radius']
             step = current_radius - previous_radius
             
-            # If step exceeds twice the average step size, start a new group
-            if step > 4 * average_step:
+            # If step exceeds tolerance, start a new group
+            if step > radius_tolerance:
                 groups.append(current_group)
                 current_group = [panel]
             else:
@@ -932,12 +1079,26 @@ class Torsion_Arm_LJS640:
         if current_group:
             groups.append(current_group)
         
-        # Assign groups to self.panel_groups with average radius as key
+        # Create single panel per group by combining points
         for group in groups:
             group_radii = [p.fit_params['radius'] for p in group]
             avg_radius = np.mean(group_radii)
-            key = round(avg_radius, 2)
-            self.panel_groups[key] = group
+            
+            # Combine points from all panels in the group
+            combined_points = np.concatenate([p.points for p in group], axis=1)
+            
+            # Calculate center as average of panel centers
+            combined_center = np.mean([p.center for p in group], axis=0)
+            
+            # Use maximum size from panels in the group
+            combined_size = max(p.size for p in group)
+            
+            # Create new panel with combined points
+            combined_panel = self.Panel(center=combined_center, size=combined_size, points=combined_points)
+            combined_panel.weight = 1.0
+            self.fit_cylinder_to_panel(combined_panel)
+            
+            self.panel_groups.append(combined_panel)
 
     def group_panels_by_axial_location(self, y_thresholds=None, min_gap=20.0):
         """
@@ -1088,16 +1249,16 @@ class Torsion_Arm_LJS640:
     def weight_panels(self):
         """
         Assigns weights to panels in each region based on alignment with the region's cylinder
-        and the distribution of radial RMSE values.
+        and the distribution of radial stddev values.
 
         For each panel:
         - Fits a cylinder and checks alignment with the region's cylinder axis.
         - If misaligned (>5 degrees), assigns weight 0.
-        - If aligned, computes RMSE of radial errors relative to the region's cylinder.
-        - Assigns weights based on RMSE percentiles:
-        - RMSE ≤ 11th percentile: weight = 1
-        - RMSE ≥ 89th percentile: weight = 0
-        - 11th < RMSE < 89th: weight = (1 - 2x)^3 + 0.5, where x is normalized percentile rank
+        - If aligned, computes stddev of radial errors relative to the region's cylinder.
+        - Assigns weights based on stddev percentiles:
+        - stddev ≤ 11th percentile: weight = 1
+        - stddev ≥ 89th percentile: weight = 0
+        - 11th < stddev < 89th: weight = (1 - 2x)^3 + 0.5, where x is normalized percentile rank
         """
         for region_idx, region in enumerate(self.regions):
             # Skip if region has no valid cylinder fit
@@ -1115,8 +1276,8 @@ class Torsion_Arm_LJS640:
                 if not hasattr(panel, 'fit_params') or panel.fit_params is None:
                     self.fit_cylinder_to_panel(panel)
             
-            # Compute RMSE for each panel and collect values
-            rmse_list = []
+            # Compute stddev for each panel and collect values
+            stddev_list = []
             for panel in panels:
                 if panel.fit_params is None or 'axis' not in panel.fit_params:
                     panel.weight = 0.0
@@ -1127,32 +1288,78 @@ class Torsion_Arm_LJS640:
                     panel.weight = 0.0
                     continue
                 
-                # Compute radial RMSE using region's cylinder
+                # Compute radial stddev using region's cylinder
                 points = panel.points.T  # Shape (n_points, 3)
                 delta = points - C_region
                 proj = np.dot(delta, A_region)
                 Q = C_region + proj[:, np.newaxis] * A_region
                 distances = np.linalg.norm(points - Q, axis=1)
-                radial_errors = distances - R_region
-                rmse = np.sqrt(np.mean(radial_errors**2))
-                panel.region_rmse = rmse
-                rmse_list.append(rmse)
+                stddev = np.std(distances)
+                panel.region_stddev = stddev
+                stddev_list.append(stddev)
             
-            # Assign weights based on RMSE distribution
-            if rmse_list:
-                P00 = np.percentile(rmse_list, 0)
-                P100 = np.percentile(rmse_list, 100)
+            # Assign weights based on stddev distribution
+            if stddev_list:
+                P00 = np.percentile(stddev_list, 0)
+                P100 = np.percentile(stddev_list, 100)
                 for panel in panels:
-                    if not panel.region_rmse == None:
+                    if not panel.region_stddev == None:
                         # Normalize x between 0 and 1
-                        x = (panel.region_rmse) / (P100 - P00)
+                        x = (panel.region_stddev) / (P100 - P00)
                         panel.weight = max(0.0, min(1.0, -1.25*x + 1.125)) # Accepcts all below 10th, rejects all above 90th. Linear between
-                    # print(panel.region_rmse, panel.weight)
+                    # print(panel.region_stddev, panel.weight)
                     # self.plot_panel_fit(panel)
             else:
                 # If no panels passed alignment, assign weight 0
                 for panel in panels:
                     panel.weight = 0.0
+
+    def filter_outliers_in_panel(self, panel, iqr_scales=[1.0, 0.5, 0.2]):
+        """
+        Iteratively filters out outlier points in the panel based on the best-fit cylinder.
+
+        Args:
+            panel: The panel containing points to be filtered.
+            iqr_scales (list): List of IQR scales for iterative filtering (e.g., [1.0, 0.5]).
+        """
+        points = panel.points.T  # Assuming points are in columns, transpose to rows
+        
+        for iqr_scale in iqr_scales:
+            # Fit cylinder to current points
+            xy_centroid = np.mean(points[:, :2], axis=0)
+            x_size = np.max(points[:, 0]) - np.min(points[:, 0])
+            temp_panel = self.Panel(center=xy_centroid, size=x_size, points=points.T)
+            print(f'Fitting cylinder to {temp_panel.num_points} points')
+            self.fit_cylinder_to_panel(temp_panel)
+            
+            # Extract cylinder parameters
+            A = temp_panel.fit_params['axis']         # Cylinder axis
+            C = temp_panel.fit_params['center_3d']    # Cylinder center
+            R = temp_panel.fit_params['radius']       # Cylinder radius
+            
+            # Compute radial errors
+            delta = points - C
+            proj = np.dot(delta, A)
+            Q = C + proj[:, np.newaxis] * A
+            distance_to_axis = np.linalg.norm(points - Q, axis=1)
+            radial_errors = np.abs(distance_to_axis - R)
+            
+            # Compute IQR and determine threshold
+            Q1, Q3 = np.percentile(radial_errors, [25, 75])
+            IQR = Q3 - Q1
+            upper_bound = Q3 + iqr_scale * IQR
+            
+            # Keep points where radial_error <= upper_bound
+            mask = radial_errors <= upper_bound
+            points = points[mask]
+        
+        # Update the panel's points with inliers
+        panel.points = points.T
+        panel.num_points = panel.points.shape[1]
+        
+        # Refit the cylinder to the final points for consistency
+        print(f'Fitting cylinder to final {panel.num_points} points')
+        self.fit_cylinder_to_panel(panel)
 
     def fit_spindle_3D(self, axial_cutoff=-150, show_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1):
         """
@@ -1194,17 +1401,17 @@ class Torsion_Arm_LJS640:
         print(f'Showing intial grid of size {box_size}')
         # self.visualize_grid(panels=self.panels, panel_size=box_size)
         
-        # Fit cylinders and establish RMSE cutoff
+        # Fit cylinders and establish stddev cutoff
         for panel in self.panels:
             self.fit_cylinder_to_panel(panel)
         
-        rmses = [panel.fit_params['rmse'] for panel in self.panels if panel.fit_params]
-        rmse_cutoff = np.percentile(rmses, 12) if rmses else float('inf')
+        stddevs = [panel.fit_params['stddev'] for panel in self.panels if panel.fit_params]
+        stddev_cutoff = np.percentile(stddevs, 12) if stddevs else float('inf')
         
         # Keep only good panels
         self.panels = [panel for panel in self.panels  
                     if panel.fit_params and 
-                    panel.fit_params['rmse'] <= rmse_cutoff and 
+                    panel.fit_params['stddev'] <= stddev_cutoff and 
                     panel.fit_params['colinearity'] >= 0.99]
         
         # Visualize initial good panels
@@ -1233,7 +1440,7 @@ class Torsion_Arm_LJS640:
             # Keep good panels
             new_good_panels = [panel for panel in new_panels 
                             if panel.fit_params and 
-                            panel.fit_params['rmse'] <= rmse_cutoff and 
+                            panel.fit_params['stddev'] <= stddev_cutoff and 
                             panel.fit_params['colinearity'] >= 0.99]
             
             self.panels.extend(new_good_panels)
@@ -1287,6 +1494,196 @@ class Torsion_Arm_LJS640:
         #     print(region.fit_params['radius'])
         #endregion
 
+    def fit_spindle_3D2(self, axial_cutoff=-150, side='left', show_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1):
+        """
+        Fits a 3D spindle by creating grids of decreasing panel sizes, keeping good fits.
+
+        Args:
+            axial_cutoff (float): Threshold along the bar axis to isolate spindle points.
+            show_flag (bool): If True, displays intermediate plots.
+            box_size (float): Initial panel size in mm.
+            min_size (float): Minimum panel size to stop subdivision.
+            overlap_factor (float): Factor to scale panel sizes for point inclusion.
+        """
+        #region ITERATIVE GRID SEARCH FOR LOW NOISE
+        # Store overlap_factor for use in create_grid
+        self.overlap_factor = overlap_factor
+        col_tol = 0.99
+        
+        # Setup coordinate system and project points
+        spindle_points = self.select_spindle_points(axial_cutoff, side)
+        self.spindle_cloud = spindle_points
+        # if show_flag:
+        #     print('Showing spindle'); self.show_cloud(spindle_points.T)
+        self.points_xy = self.project_to_xy(spindle_points)
+        
+        self.axis_xy = self.bar_axis[:2]
+        if np.linalg.norm(self.axis_xy) > 1e-6:
+            self.axis_xy = self.axis_xy / np.linalg.norm(self.axis_xy)
+        else:
+            self.axis_xy = np.array([1.0, 0.0])
+        self.tangential_xy = np.array([-self.axis_xy[1], self.axis_xy[0]])
+        
+        self.u_values = self.points_xy @ self.axis_xy
+        self.v_values = self.points_xy @ self.tangential_xy
+        self.u_lower, self.u_upper = np.min(self.u_values), np.max(self.u_values)
+        self.v_lower, self.v_upper = np.min(self.v_values), np.max(self.v_values)
+        
+        # Initialize with first grid
+        self.panels = self.create_grid(box_size, spindle_points)
+        # print(f'Showing intial grid of size {box_size}')
+        # self.visualize_grid(panels=self.panels, panel_size=box_size)
+        
+        # Fit cylinders and filter bad sections
+        for panel in self.panels:
+            self.fit_cylinder_to_panel(panel)
+
+        stddevs = [panel.fit_params['stddev'] for panel in self.panels if panel.fit_params]
+        stddev_cutoff = np.percentile(stddevs, 50) if stddevs else float('inf')
+        self.panels = [panel for panel in self.panels  
+                    if panel.fit_params and 
+                    panel.fit_params['stddev'] <= stddev_cutoff and 
+                    panel.fit_params['colinearity'] >= col_tol]
+        print(f'Showing initial good panels down to {box_size}mm')
+        self.visualize_good_panels()
+        # for panel in self.panels:
+        #     self.plot_panel_fit(panel)
+
+        good_panels = self.panels.copy()
+        new_panels = self.create_grid(box_size/2, spindle_points)
+        # print(f'Showing new grid of size {box_size/2}')
+        # self.visualize_grid(panels=new_panels, panel_size=box_size/2)
+        new_panels = [panel for panel in new_panels 
+                        if not self.is_inside_good_panel(panel, good_panels)]
+        # print(f'Showing filtered grid of size {box_size/2}')
+        # self.visualize_grid(panels=new_panels, panel_size=box_size/2)
+        for panel in new_panels:
+            self.fit_cylinder_to_panel(panel)
+        new_good_panels = [panel for panel in new_panels 
+                            if panel.fit_params and  
+                            panel.fit_params['colinearity'] >= col_tol]
+        self.panels.extend(new_good_panels)
+        print(f'Showing good panels down to {box_size/2}mm')
+        self.visualize_good_panels()
+        #endregion
+
+        #region FIT AXIS TO GOOD PANELS
+        for panel in self.panels:
+            panel.weight = 1.0
+
+        self.spindle_axis = self.fit_axis_to_weighted_spindle_panels2(); print('Fitting axis to all good panels')
+        #endregion
+
+    def fit_spindle_3D3(self, axial_cutoff=-150, side='left', show_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1):
+        """
+        Fits a 3D spindle by creating grids of decreasing panel sizes, keeping good fits.
+
+        Args:
+            axial_cutoff (float): Threshold along the bar axis to isolate spindle points.
+            show_flag (bool): If True, displays intermediate plots.
+            box_size (float): Initial panel size in mm.
+            min_size (float): Minimum panel size to stop subdivision.
+            overlap_factor (float): Factor to scale panel sizes for point inclusion.
+        """
+        #region ITERATIVE GRID SEARCH FOR LOW NOISE
+        # Store overlap_factor for use in create_grid
+        self.overlap_factor = overlap_factor
+        col_tol = 0.99
+        
+        # Setup coordinate system and project points
+        spindle_points = self.select_spindle_points(axial_cutoff, side)
+        self.spindle_cloud = spindle_points
+        if show_flag:
+            print('Showing spindle'); self.show_cloud(spindle_points.T)
+        self.points_xy = self.project_to_xy(spindle_points)
+        
+        self.axis_xy = self.bar_axis[:2]
+        if np.linalg.norm(self.axis_xy) > 1e-6:
+            self.axis_xy = self.axis_xy / np.linalg.norm(self.axis_xy)
+        else:
+            self.axis_xy = np.array([1.0, 0.0])
+        self.tangential_xy = np.array([-self.axis_xy[1], self.axis_xy[0]])
+        
+        self.u_values = self.points_xy @ self.axis_xy
+        self.v_values = self.points_xy @ self.tangential_xy
+        self.u_lower, self.u_upper = np.min(self.u_values), np.max(self.u_values)
+        self.v_lower, self.v_upper = np.min(self.v_values), np.max(self.v_values)
+        
+        # Initialize with first grid
+        self.panels = self.create_slices(box_size, spindle_points)
+        # print(f'Showing intial grid of size {box_size}'); self.visualize_grid(panels=self.panels, panel_size=box_size)
+        
+        # Fit cylinders and filter bad sections
+        for panel in self.panels:
+            self.fit_cylinder_to_panel(panel)
+
+        stddevs = [panel.fit_params['stddev'] for panel in self.panels if panel.fit_params]
+        stddev_cutoff = np.percentile(stddevs, 50) if stddevs else float('inf')
+        self.panels = [panel for panel in self.panels  
+                    if panel.fit_params and 
+                    panel.fit_params['stddev'] <= stddev_cutoff and 
+                    panel.fit_params['colinearity'] >= col_tol]
+        # print(f'Showing initial good panels down to {box_size}mm'); self.visualize_good_panels()
+        # for panel in self.panels:
+        #     self.plot_panel_fit(panel)
+
+        good_panels = self.panels.copy()
+        new_panels = self.create_slices(box_size/2, spindle_points)
+        # print(f'Showing new grid of size {box_size/2}'); self.visualize_grid(panels=new_panels, panel_size=box_size/2)
+        
+        new_panels = [panel for panel in new_panels 
+                        if not self.is_inside_good_panel(panel, good_panels)]
+        # print(f'Showing filtered grid of size {box_size/2}'); self.visualize_grid(panels=new_panels, panel_size=box_size/2)
+        for panel in new_panels:
+            self.fit_cylinder_to_panel(panel)
+        new_good_panels = [panel for panel in new_panels 
+                            if panel.fit_params and  
+                            panel.fit_params['stddev'] <= stddev_cutoff*2.0 and
+                            panel.fit_params['colinearity'] >= col_tol]
+        self.panels.extend(new_good_panels)
+
+        good_panels = self.panels.copy()
+        new_panels = self.create_slices(box_size/3, spindle_points)
+        # print(f'Showing new grid of size {box_size/3}'); self.visualize_grid(panels=new_panels, panel_size=box_size/3)
+        
+        new_panels = [panel for panel in new_panels 
+                        if not self.is_inside_good_panel(panel, good_panels)]
+        # print(f'Showing filtered grid of size {box_size/3}'); self.visualize_grid(panels=new_panels, panel_size=box_size/3)
+        for panel in new_panels:
+            self.fit_cylinder_to_panel(panel)
+        new_good_panels = [panel for panel in new_panels 
+                            if panel.fit_params and  
+                            panel.fit_params['stddev'] <= stddev_cutoff*2.5 and
+                            panel.fit_params['colinearity'] >= col_tol]
+        self.panels.extend(new_good_panels)
+
+
+        print(f'Showing good panels down to {box_size/3}mm'); self.visualize_good_panels()
+        # for panel in self.panels:
+        #     self.plot_panel_fit(panel)
+        #endregion
+
+        #region GROUP SLICES BY RADIUS AND SELECT GOOD POINTS
+        self.group_panels_by_radius(radius_tolerance=0.15)
+        print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
+        # self.fit_axis_to_weighted_spindle_panels2(knn=80, view_normals=True)
+
+        for panel in self.panel_groups:
+            # print('Showing original panel'); self.plot_panel_fit(panel)
+            self.filter_outliers_in_panel(panel)
+            # print('Showing filtered panel'); self.plot_panel_fit(panel)
+            # self.visualize_panel_normals(panel, knn=10)
+            # self.visualize_panel_normals(panel, knn=30)
+
+        for panel in self.panel_groups:
+            # Radius weight: 0 at radius < 7, 1 at radius > 25, linear in between
+            radius_weight = np.clip((panel.fit_params['radius'] - 7) / (25 - 7), 0, 1)
+            # Stddev weight: 1 at stddev < 0.4, 0 at stddev > 0.8, linear in between
+            stddev_weight = np.clip((0.8 - panel.fit_params['stddev']) / (0.8 - 0.4), 0, 1)
+            panel.weight = radius_weight * stddev_weight
+
+        self.spindle_axis = self.fit_axis_to_weighted_spindle_panels2(knn=120, view_normals=True); print('Fitting axis to all good panels')
+        #endregion
 
 #endregion
 
@@ -1328,8 +1725,8 @@ class Torsion_Arm_LJS640:
         S = np.array(self.spindle_axis) / np.linalg.norm(self.spindle_axis)
         if not np.isclose(np.linalg.norm(B), 1.0) or not np.isclose(np.linalg.norm(S), 1.0):
             raise ValueError("Inputs must be unit vectors")
-        self.bar_angle = np.degrees(np.array([np.arccos(B[0]), np.arccos(B[1]), np.arccos(B[2])]))
-        self.spindle_angle = np.degrees(np.array([np.arccos(S[0]), np.arccos(S[1]), np.arccos(S[2])]))
+        self.bar_align = np.degrees(np.array([np.arccos(B[0]), np.arccos(B[1]), np.arccos(B[2])]))
+        self.spindle_align = np.degrees(np.array([np.arccos(S[0]), np.arccos(S[1]), np.arccos(S[2])]))
         R = np.cross(B, S)
         sin_theta = np.linalg.norm(R)
         theta_deg = np.degrees(np.arcsin(sin_theta))
@@ -1337,23 +1734,115 @@ class Torsion_Arm_LJS640:
         Rx_deg, Ry_deg, Rz_deg = np.degrees(R)
         self.relative_angle = np.array([Rx_deg, Ry_deg, Rz_deg])
 
+    def calc_toe_camber(self, side):
+        # Bar axis calculations
+        v_x, v_y, v_z = self.bar_axis
+        # Toe angle: angle between y-axis and projection on x-y plane
+        toe = 90-np.degrees(np.arccos(v_y / np.sqrt(v_x**2 + v_y**2))) if v_x**2 + v_y**2 != 0 else 0
+        self.bar_toe = toe if v_x >= 0 else -toe  # Positive v_x: toe-in, negative: toe-out
+        # Camber angle: angle between z-axis and projection on x-z plane
+        camber = 90-np.degrees(np.arccos(v_z / np.sqrt(v_x**2 + v_z**2))) if v_x**2 + v_z**2 != 0 else 0
+        self.bar_camber = camber if v_x >= 0 else -camber  # Positive v_x: positive camber
+        
+        # Spindle axis calculations
+        v_x, v_y, v_z = self.spindle_axis
+        # Toe angle: angle between y-axis and projection on x-y plane
+        toe = 90-np.degrees(np.arccos(v_y / np.sqrt(v_x**2 + v_y**2))) if v_x**2 + v_y**2 != 0 else 0
+        self.spindle_toe = toe if v_x >= 0 else -toe  # Positive v_x: toe-in, negative: toe-out
+        # Camber angle: angle between z-axis and projection on x-z plane
+        camber = 90-np.degrees(np.arccos(v_z / np.sqrt(v_x**2 + v_z**2))) if v_x**2 + v_z**2 != 0 else 0
+        self.spindle_camber = camber if v_x >= 0 else -camber  # Positive v_x: positive camber
+
+        if side == 'right':
+            self.spindle_align = np.array([self.spindle_toe, self.spindle_camber])
+            self.bar_align = np.array([self.bar_toe, self.bar_camber])
+        elif side == 'left':
+            self.spindle_align = np.array([-self.spindle_toe, -self.spindle_camber])
+            self.bar_align = np.array([-self.bar_toe, -self.bar_camber])
+    
+        # Calculate spindle toe and camber relative to the bar
+        # Normalize bar_axis to define local x-axis
+        u_x = self.bar_axis / np.linalg.norm(self.bar_axis)
+
+        # Choose reference vector for defining local y-axis
+        ref = np.array([0, 0, 1])
+        if np.abs(u_x[2]) > 0.999:  # If bar is nearly vertical, use global x-axis
+            ref = np.array([1, 0, 0])
+
+        # Define local y- and z-axes
+        u_y = np.cross(ref, u_x)
+        u_y = u_y / np.linalg.norm(u_y)
+        u_z = np.cross(u_x, u_y)
+
+        # Form rotation matrix (columns are local axes in global frame)
+        R_bar = np.column_stack((u_x, u_y, u_z))
+
+        # Transform spindle_axis to bar's local coordinate system
+        spindle_local = R_bar.T @ self.spindle_axis
+        v_x_local, v_y_local, v_z_local = spindle_local
+
+        # Compute relative toe angle (in local x-y plane)
+        if v_x_local**2 + v_y_local**2 != 0:
+            toe_relative = 90 - np.degrees(np.arccos(v_y_local / np.sqrt(v_x_local**2 + v_y_local**2)))
+        else:
+            toe_relative = 0
+        self.toe = toe_relative if v_x_local >= 0 else -toe_relative
+
+        # Compute relative camber angle (in local x-z plane)
+        if v_x_local**2 + v_z_local**2 != 0:
+            camber_relative = 90 - np.degrees(np.arccos(v_z_local / np.sqrt(v_x_local**2 + v_z_local**2)))
+        else:
+            camber_relative = 0
+        self.camber = camber_relative if v_x_local >= 0 else -camber_relative
+
+        # Total misalignment: angle between spindle and bar vectors
+        spindle_norm = self.spindle_axis / np.linalg.norm(self.spindle_axis)
+        bar_norm = self.bar_axis / np.linalg.norm(self.bar_axis)
+        dot_product = np.clip(np.dot(spindle_norm, bar_norm), -1.0, 1.0)  # Avoid numerical errors
+        self.total_misalign = np.degrees(np.arccos(dot_product))
+
     def print_angles(self):
-        np.set_printoptions(precision=4, suppress=True)
+        np.set_printoptions(precision=6, suppress=True)
         print(f'\nBar Axis:\t{self.bar_axis}')
         print(f'Spindle Axis:\t{self.spindle_axis}')
-        print(f'\n---DEGREES---\nBar Angle:\t{self.bar_angle}')
-        print(f'Spindle Angle:\t{self.spindle_angle}')
-        print(f'Relative Angle:\t{self.relative_angle}')
-        print(f'Total Angle:\t{self.total_angle:.4f}')
+        np.set_printoptions(precision=4, suppress=True)
+        print(f'\n---DEGREES Toe/Camber---\nBar Global Alignment:\t\t{self.bar_align}')
+        print(f'Spindle Global Alignment:\t{self.spindle_align}')
+        print(f'Spindle/Bar:\t{self.toe:.4f}, {self.camber:.4f}')
+        print(f'Total Misalignment:\t{self.total_misalign:.4f}')
 
+    def plot_vectors(self):
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        
+        # Origin
+        origin = np.array([0, 0, 0])
+        
+        # Plot vectors
+        ax.quiver(*origin, *self.bar_axis, color='b', label='bar')
+        ax.quiver(*origin, *self.spindle_axis, color='r', label='spindle')
+        ax.quiver(*origin, 1, 0, 0, color='k', linestyle='--', label='X-axis')
+        ax.quiver(*origin, 0, 1, 0, color='g', linestyle='--', label='Y-axis')
+        
+        # Set equal aspect ratio
+        max_range = max(np.linalg.norm(self.bar_axis), np.linalg.norm(self.spindle_axis)) * 1.5
+        ax.set_xlim([-max_range, max_range])
+        ax.set_ylim([-max_range, max_range])
+        ax.set_zlim([-max_range, max_range])
+        
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.legend()
+        plt.show()
 
 def Trim_Cloud(cloud, direction, cutOff=[-500,500], minPoints=10000):
     untrimmed_cloud = cloud
-    if direction == 'X':
+    if direction == 'x':
         index = 0
-    elif direction == 'Y':
+    elif direction == 'y':
         index = 1
-    elif direction == 'Z':
+    elif direction == 'z':
         index = 2
     else:
         print(f'Trimming Error: Invalid direction slection, returning untrimmed cloud')
@@ -1566,6 +2055,8 @@ def Plot_Cloud_PyVista(points, pointSize=1.0, ui=None):
     plotter = pv.Plotter()
     plotter.set_background('gray')
     plotter.add_mesh(cloud, scalars='z', cmap='coolwarm', point_size=pointSize)
+    plotter.add_axes(xlabel='X (Axle)', ylabel='Y (Motion)', zlabel='Z (Vertical)',
+                     line_width=4, labels_off=False)
     
     def orbit_left():
         plotter.camera.azimuth -= 1

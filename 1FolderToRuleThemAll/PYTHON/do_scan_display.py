@@ -57,7 +57,7 @@ def main(filename=None):
 
     # Combine into a single array
     # cloud = np.stack((x, y, z), axis=0)
-    cloud = np.array([y, -x, z])
+    cloud = np.array([x, y, z])
     Plot_Cloud_PyVista(cloud)
 
 def Plot_Cloud_PyVista(points, pointSize=1.0):
