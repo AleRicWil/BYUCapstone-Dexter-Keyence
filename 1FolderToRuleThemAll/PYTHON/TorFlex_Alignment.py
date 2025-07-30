@@ -1811,6 +1811,77 @@ class Torsion_Arm_LJS640:
         print(f'Spindle/Bar:\t{self.toe:.4f}, {self.camber:.4f}')
         print(f'Total Misalignment:\t{self.total_misalign:.4f}')
 
+    def save_angles_to_csv(self, filename="angles_output.csv", note="Alignment data for spindle and bar"):
+        import os
+        import pandas as pd
+        """
+        Appends bar and spindle axis, alignment, relative toe/camber, and total misalignment to a CSV file.
+        Places note above headers and updates average and standard deviation rows.
+
+        Args:
+            filename (str): Output CSV file name.
+            note (str): Note to include above the header row.
+        """
+        # Define column headers
+        headers = [
+            'bar_axis_x', 'bar_axis_y', 'bar_axis_z',
+            'spindle_axis_x', 'spindle_axis_y', 'spindle_axis_z',
+            'bar_toe', 'bar_camber',
+            'spindle_toe', 'spindle_camber',
+            'relative_toe', 'relative_camber',
+            'total_misalign'
+        ]
+
+        # Create new data row
+        new_data = np.concatenate([
+            self.bar_axis,
+            self.spindle_axis,
+            self.bar_align,
+            self.spindle_align,
+            [self.toe, self.camber, self.total_misalign]
+        ])
+
+        # Initialize DataFrame for new data
+        new_df = pd.DataFrame([new_data], columns=headers)
+
+        # Read existing CSV if it exists
+        if os.path.exists(filename):
+            # Read, skipping note and header rows
+            existing_df = pd.read_csv(filename, skiprows=2, header=None, names=headers)
+            # Filter out 'Average' and 'Std Dev' rows
+            data_rows = existing_df[
+                ~existing_df['bar_axis_x'].isin(['Average', 'Std Dev'])
+            ].astype(float)
+            # Append new data
+            data_rows = pd.concat([data_rows, new_df], ignore_index=True)
+        else:
+            data_rows = new_df
+
+        # Calculate average and standard deviation
+        avg_row = data_rows.mean().to_numpy()
+        std_row = data_rows.std().to_numpy()
+
+        # Create note row with proper column alignment
+        note_row = pd.DataFrame([[note] + [''] * (len(headers) - 1)], columns=headers)
+
+        # Create header row
+        header_row = pd.DataFrame([headers], columns=headers)
+
+        # Create data DataFrame
+        data_df = data_rows.copy()
+
+        # Create average and standard deviation rows
+        avg_df = pd.DataFrame([avg_row], columns=headers)
+        avg_df.iloc[0, 0] = 'Average'
+        std_df = pd.DataFrame([std_row], columns=headers)
+        std_df.iloc[0, 0] = 'Std Dev'
+
+        # Combine all rows: note, headers, data, average, std
+        final_df = pd.concat([note_row, header_row, data_df, avg_df, std_df], ignore_index=True)
+
+        # Save to CSV without adding an extra header
+        final_df.to_csv(filename, index=False, float_format='%.6f', header=False)
+
     def plot_vectors(self):
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
