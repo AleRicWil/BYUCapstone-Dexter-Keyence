@@ -179,6 +179,7 @@ class Axle_Hub_LJS640:
 
 class Torsion_Arm_LJS640:
     def __init__(self, filename, view_angle_horizontal=0.0, scanType='real', cutOff=[-500,500,-500,500,-500,500], ui=None):
+        self.filename = filename
         self.ui = ui
         self.closeLedges = 0.1
         self.ledgeThreshold = 0.1
@@ -1658,14 +1659,14 @@ class Torsion_Arm_LJS640:
         self.panels.extend(new_good_panels)
 
 
-        print(f'Showing good panels down to {box_size/3}mm'); self.visualize_good_panels()
+        # print(f'Showing good panels down to {box_size/3}mm'); self.visualize_good_panels()
         # for panel in self.panels:
         #     self.plot_panel_fit(panel)
         #endregion
 
         #region GROUP SLICES BY RADIUS AND SELECT GOOD POINTS
         self.group_panels_by_radius(radius_tolerance=0.15)
-        print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
+        # print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
         # self.fit_axis_to_weighted_spindle_panels2(knn=80, view_normals=True)
 
         for panel in self.panel_groups:
@@ -1682,7 +1683,7 @@ class Torsion_Arm_LJS640:
             stddev_weight = np.clip((0.8 - panel.fit_params['stddev']) / (0.8 - 0.4), 0, 1)
             panel.weight = radius_weight * stddev_weight
 
-        self.spindle_axis = self.fit_axis_to_weighted_spindle_panels2(knn=120, view_normals=True); print('Fitting axis to all good panels')
+        self.spindle_axis = self.fit_axis_to_weighted_spindle_panels2(knn=120, view_normals=False); print('Fitting axis to all good panels')
         #endregion
 
 #endregion
@@ -1811,7 +1812,7 @@ class Torsion_Arm_LJS640:
         print(f'Spindle/Bar:\t{self.toe:.4f}, {self.camber:.4f}')
         print(f'Total Misalignment:\t{self.total_misalign:.4f}')
 
-    def save_angles_to_csv(self, filename="angles_output.csv", note="Alignment data for spindle and bar"):
+    def save_angles_to_csv(self, csv_filename="angles_output.csv", note="Alignment data for spindle and bar"):
         import os
         import pandas as pd
         """
@@ -1819,11 +1820,11 @@ class Torsion_Arm_LJS640:
         Places note above headers and updates average and standard deviation rows.
 
         Args:
-            filename (str): Output CSV file name.
+            csv_filename (str): Output CSV file name.
             note (str): Note to include above the header row.
         """
         # Define column headers
-        headers = [
+        headers = ['file',
             'bar_axis_x', 'bar_axis_y', 'bar_axis_z',
             'spindle_axis_x', 'spindle_axis_y', 'spindle_axis_z',
             'bar_toe', 'bar_camber',
@@ -1831,9 +1832,18 @@ class Torsion_Arm_LJS640:
             'relative_toe', 'relative_camber',
             'total_misalign'
         ]
+        dtypes = {
+        'file': str,
+        'bar_axis_x': float, 'bar_axis_y': float, 'bar_axis_z': float,
+        'spindle_axis_x': float, 'spindle_axis_y': float, 'spindle_axis_z': float,
+        'bar_toe': float, 'bar_camber': float,
+        'spindle_toe': float, 'spindle_camber': float,
+        'relative_toe': float, 'relative_camber': float,
+        'total_misalign': float
+}
 
         # Create new data row
-        new_data = np.concatenate([
+        new_data = np.concatenate([[self.filename],
             self.bar_axis,
             self.spindle_axis,
             self.bar_align,
@@ -1842,24 +1852,24 @@ class Torsion_Arm_LJS640:
         ])
 
         # Initialize DataFrame for new data
-        new_df = pd.DataFrame([new_data], columns=headers)
+        new_df = pd.DataFrame([new_data], columns=headers).astype(dtypes)
 
         # Read existing CSV if it exists
-        if os.path.exists(filename):
+        if os.path.exists(csv_filename):
             # Read, skipping note and header rows
-            existing_df = pd.read_csv(filename, skiprows=2, header=None, names=headers)
-            # Filter out 'Average' and 'Std Dev' rows
+            existing_df = pd.read_csv(csv_filename, skiprows=2, header=None, names=headers, dtype=dtypes)
+            # Filter out 'avg' and 'stddev' rows
             data_rows = existing_df[
-                ~existing_df['bar_axis_x'].isin(['Average', 'Std Dev'])
-            ].astype(float)
+                ~existing_df['file'].isin(['avg', 'stddev'])
+            ]
             # Append new data
             data_rows = pd.concat([data_rows, new_df], ignore_index=True)
         else:
             data_rows = new_df
 
-        # Calculate average and standard deviation
-        avg_row = data_rows.mean().to_numpy()
-        std_row = data_rows.std().to_numpy()
+        # Calculate average and standard deviation (excluding 'file' column)
+        avg_row = data_rows.drop(columns=['file']).mean().to_numpy()
+        std_row = data_rows.drop(columns=['file']).std().to_numpy()
 
         # Create note row with proper column alignment
         note_row = pd.DataFrame([[note] + [''] * (len(headers) - 1)], columns=headers)
@@ -1871,16 +1881,14 @@ class Torsion_Arm_LJS640:
         data_df = data_rows.copy()
 
         # Create average and standard deviation rows
-        avg_df = pd.DataFrame([avg_row], columns=headers)
-        avg_df.iloc[0, 0] = 'Average'
-        std_df = pd.DataFrame([std_row], columns=headers)
-        std_df.iloc[0, 0] = 'Std Dev'
+        avg_df = pd.DataFrame([['avg'] + avg_row.tolist()], columns=headers)
+        std_df = pd.DataFrame([['stddev'] + std_row.tolist()], columns=headers)
 
         # Combine all rows: note, headers, data, average, std
         final_df = pd.concat([note_row, header_row, data_df, avg_df, std_df], ignore_index=True)
 
         # Save to CSV without adding an extra header
-        final_df.to_csv(filename, index=False, float_format='%.6f', header=False)
+        final_df.to_csv(csv_filename, index=False, float_format='%.6f', header=False)
 
     def plot_vectors(self):
         fig = plt.figure()
