@@ -555,11 +555,11 @@ class Dexter_Capstone_UI:
 
     def show_arm_results(self):
         def content(frame):
-            try:
-                self.save_arm_results()
-                self.print_arm_results()
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to save or print results: {e}")
+            # try:
+            #     self.save_arm_results()
+            #     self.print_arm_results()
+            # except Exception as e:
+            #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
             results = (f'Total Camber:\t{self.camber:.4f}°\nTotal Toe:\t{self.toe:.4f}°')
