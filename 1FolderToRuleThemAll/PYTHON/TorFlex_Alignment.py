@@ -437,9 +437,6 @@ class Torsion_Arm_LJS640:
         
         # Select half of scan which includes spindle
             # Calculate distances along axis from starting_point
-        starting_point = self.bar_faces_highest_point
-        delta = self.cloud.T - starting_point
-        s = delta @ approx_axis
         spindle_half = self.select_spindle_points(axial_cutoff, side)
         self.spindle_cloud = spindle_half
         # if show:
@@ -453,8 +450,8 @@ class Torsion_Arm_LJS640:
         # Map planar spindle points back to original 3D cloud
         plane_points = np.dot(spindle_half, np.array([u, v]).T)  # Recalculate plane_points
         # Create a mask for points in plane_spindle
-        mask = np.isin(plane_points, plane_spindle).all(axis=1)
-        spindle_bounded = spindle_half[mask]
+        #mask = np.isin(plane_points, plane_spindle).all(axis=1)
+        spindle_bounded = spindle_half
         if show:
             self.show_cloud(spindle_bounded.T)
         '''End of finding spindle within cloud'''
