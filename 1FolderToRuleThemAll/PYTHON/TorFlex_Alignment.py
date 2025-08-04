@@ -810,7 +810,7 @@ class Torsion_Arm_LJS640:
         for panel in self.panel_groups:
             if not panel.weight == None:  # Check for non-None weight
                 points = panel.points.T  # Transpose assumes points are in columns
-                weight = panel.weight; print('weight:', weight)
+                weight = panel.weight; #print('weight:', weight)
                 all_points.append(points)
                 all_weights.append(np.full(points.shape[0], weight))
             centers.append(panel.fit_params['center_3d'])
@@ -1330,7 +1330,7 @@ class Torsion_Arm_LJS640:
             xy_centroid = np.mean(points[:, :2], axis=0)
             x_size = np.max(points[:, 0]) - np.min(points[:, 0])
             temp_panel = self.Panel(center=xy_centroid, size=x_size, points=points.T)
-            print(f'Fitting cylinder to {temp_panel.num_points} points')
+            # print(f'Fitting cylinder to {temp_panel.num_points} points')
             self.fit_cylinder_to_panel(temp_panel)
             
             # Extract cylinder parameters
@@ -1684,6 +1684,97 @@ class Torsion_Arm_LJS640:
             panel.weight = radius_weight * stddev_weight
 
         self.spindle_axis = self.fit_axis_to_weighted_spindle_panels2(knn=120, view_normals=False); print('Fitting axis to all good panels')
+        #endregion
+
+        #region 2D SLICES FIT
+        approx_axis = self.spindle_axis
+        good_spindle_points = self.combine_panels_into_single_panel(self.panel_groups).points
+        self.show_cloud(good_spindle_points)
+        if abs(approx_axis[0]) < min(abs(approx_axis[1]), abs(approx_axis[2])):
+            u = np.array([1, 0, 0])
+        elif abs(approx_axis[1]) < abs(approx_axis[2]):
+            u = np.array([0, 1, 0])
+        else:
+            u = np.array([0, 0, 1])
+        u = u - np.dot(u, approx_axis) * approx_axis
+        u = u / np.linalg.norm(u)
+        v = np.cross(approx_axis, u)
+
+        # Project spindle points onto bar axis and slice into bins
+        num_bins = 100
+        min_points_per_bin = 30
+        circle_fit_tol = 1.0
+        t = np.dot(good_spindle_points.T, approx_axis)
+        t_min, t_max = np.min(t), np.max(t)
+        bin_edges = np.linspace(t_min, t_max, num_bins + 1)
+        centers = []
+        count = 0
+        for i in range(num_bins):
+            mask = (t >= bin_edges[i]) & (t < bin_edges[i + 1])
+            if np.sum(mask) < min_points_per_bin:
+                continue
+            points_bin = good_spindle_points.T[mask]
+            
+            # Project points in bin onto the plane orthogonal to bar axis
+            points_2d = np.dot(points_bin, np.array([u, v]).T)
+            maxC = np.max(points_2d)
+            A = np.hstack([points_2d, np.ones((len(points_2d), 1))])
+            b = -(points_2d[:, 0]**2 + points_2d[:, 1]**2)
+            
+            # Fit a circle to projected points and record its center in global 3D frame
+            try:
+                abc = np.linalg.lstsq(A, b, rcond=None)[0]
+                a, b, c = abc
+                discriminant = a**2 + b**2 - 4*c
+                if discriminant > 0:
+                    center_2d = [-a / 2, -b / 2]
+                    radius = np.sqrt((a/2)**2 + (b/2)**2 - c)
+                    residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
+                    rmse = np.sqrt(np.mean(residuals**2))
+                    if rmse < circle_fit_tol:
+                        count += 1
+                        t_center = (bin_edges[i] + bin_edges[i + 1]) / 2
+                        center_3d = t_center * approx_axis + center_2d[0] * u + center_2d[1] * v
+                        centers.append(center_3d)
+            except np.linalg.LinAlgError:
+                continue
+            if show_flag:# and i < 10:
+                # self.show_cloud(points_bin.T)
+                theta = np.linspace(0, 2 * np.pi, 100)
+                x_circle = center_2d[0] + radius * np.cos(theta)
+                y_circle = center_2d[1] + radius * np.sin(theta)
+                # plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
+                # plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
+                # plt.scatter(center_2d[0], center_2d[1])
+                # plt.title(f"Projected Slice {i}. rmse: {rmse}")
+                # plt.xlim(-maxC, maxC)
+                # plt.ylim(-maxC, maxC)
+                # plt.axis('equal')
+                # plt.xlabel("u-axis")
+                # plt.ylabel("v-axis")
+                # plt.show()
+        
+        # Fit a line to 3D centers and evaluate fit quality
+        if len(centers) < 2:
+            raise ValueError("Not enough valid circle fits to determine the axis.")
+        centers = np.array(centers)
+        np.savetxt(r'C:\Users\Public\CapstoneUI\centers.csv', centers, delimiter=',', header='X Y Z')
+        print(f'Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
+        c_axis = np.mean(centers, axis=0)
+        # PCA for line direction
+        U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
+        axis_dir = Vt[0]  # Principal component (largest singular value)
+        if np.dot(axis_dir, approx_axis) < 0:
+            axis_dir = -axis_dir
+        # Calculate fit quality (RMSE of perpendicular distances)
+        projections = np.dot(centers - c_axis, axis_dir)
+        points_on_line = c_axis + np.outer(projections, axis_dir)
+        distances = np.linalg.norm(centers - points_on_line, axis=1)
+        rmse = np.sqrt(np.mean(distances**2))
+        print(f'Axis fit rmse: {rmse}')
+        self.axis_loc = c_axis
+        self.spindle_axis = axis_dir
+
         #endregion
 
 #endregion

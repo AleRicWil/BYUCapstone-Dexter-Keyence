@@ -50,5 +50,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\BigSpindleII10.csv')
+    main(filename=r'RealScans\BigSpindle10.csv')
     
