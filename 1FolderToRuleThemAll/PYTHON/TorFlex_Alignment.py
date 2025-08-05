@@ -1903,7 +1903,8 @@ class Torsion_Arm_LJS640:
         #region 2D SLICES FIT
         approx_axis = self.spindle_axis
         good_spindle_points = self.combine_panels_into_single_panel(self.panel_groups).points
-        self.show_cloud(good_spindle_points)
+        if show_flag:
+            self.show_cloud(good_spindle_points)
         if abs(approx_axis[0]) < min(abs(approx_axis[1]), abs(approx_axis[2])):
             u = np.array([1, 0, 0])
         elif abs(approx_axis[1]) < abs(approx_axis[2]):
