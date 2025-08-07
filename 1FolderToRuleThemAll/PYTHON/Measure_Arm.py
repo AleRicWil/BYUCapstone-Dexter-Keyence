@@ -20,7 +20,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     #scan1.show_cloud()
 
     # Find bar faces
-    scan1.fit_bar_faces(plotNum=0, cutOff=[50, 100], show=False)
+    scan1.fit_bar_faces(plotNum=0, cutOff=[50, 400], show=False)
     # print(f'Bar Axis: {scan1.bar_axis}')
 
     # Find spindle
