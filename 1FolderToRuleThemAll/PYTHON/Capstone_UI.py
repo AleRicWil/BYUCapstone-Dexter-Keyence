@@ -138,21 +138,21 @@ class Dexter_Capstone_UI:
             self.setup_screen("TorFlex Axle — Measure Arm Alignment", content, home_button=False)
         self.master.update()
 
-        self.total_scans = self.scan_count
+        # self.total_scans = self.scan_count
 
-        self.bar_X_angle_sum = 0
-        self.bar_Y_angle_sum = 0
-        self.bar_Z_angle_sum = 0
+        # self.bar_X_angle_sum = 0
+        # self.bar_Y_angle_sum = 0
+        # self.bar_Z_angle_sum = 0
 
-        self.spindle_X_angle_sum = 0
-        self.spindle_Y_angle_sum = 0
-        self.spindle_Z_angle_sum = 0
+        # self.spindle_X_angle_sum = 0
+        # self.spindle_Y_angle_sum = 0
+        # self.spindle_Z_angle_sum = 0
 
-        self.relative_X_angle_sum = 0
-        self.relative_Y_angle_sum = 0
-        self.relative_Z_angle_sum = 0
+        # self.relative_X_angle_sum = 0
+        # self.relative_Y_angle_sum = 0
+        # self.relative_Z_angle_sum = 0
 
-        self.total_arm_angle_sum = 0
+        # self.total_arm_angle_sum = 0
 
         for index in range(self.scan_count):
             data = PS.perform_scan().astype(float)
@@ -454,19 +454,22 @@ class Dexter_Capstone_UI:
                 scan_results = MA.main(self.arm_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 if isinstance(scan_results, dict) and isinstance(scan_results, dict):
-                    self.bar_X_angle = scan_results.get("bar_x_angle", "N/A")
-                    self.bar_Y_angle = scan_results.get("bar_y_angle", "N/A")
-                    self.bar_Z_angle = scan_results.get("bar_z_angle", "N/A")
+                    # self.bar_X_angle = scan_results.get("bar_x_angle", "N/A")
+                    # self.bar_Y_angle = scan_results.get("bar_y_angle", "N/A")
+                    # self.bar_Z_angle = scan_results.get("bar_z_angle", "N/A")
 
-                    self.spindle_X_angle = scan_results.get("spindle_x_angle", "N/A")
-                    self.spindle_Y_angle = scan_results.get("spindle_y_angle", "N/A")
-                    self.spindle_Z_angle = scan_results.get("spindle_z_angle", "N/A")
+                    # self.spindle_X_angle = scan_results.get("spindle_x_angle", "N/A")
+                    # self.spindle_Y_angle = scan_results.get("spindle_y_angle", "N/A")
+                    # self.spindle_Z_angle = scan_results.get("spindle_z_angle", "N/A")
 
-                    self.relative_X_angle = scan_results.get("rel_x_angle", "N/A")
-                    self.relative_Y_angle = scan_results.get("rel_y_angle", "N/A")
-                    self.relative_Z_angle = scan_results.get("rel_z_angle", "N/A")
+                    # self.relative_X_angle = scan_results.get("rel_x_angle", "N/A")
+                    # self.relative_Y_angle = scan_results.get("rel_y_angle", "N/A")
+                    # self.relative_Z_angle = scan_results.get("rel_z_angle", "N/A")
 
-                    self.total_arm_angle = scan_results.get("total_angle", "N/A")
+                    # self.total_arm_angle = scan_results.get("total_angle", "N/A")
+
+                    self.toe = scan_results.get("toe", "N/A")
+                    self.camber = scan_results.get("camber", "N/A")
 
                     self.master.after(0, self.show_arm_results)
                 else:
@@ -552,14 +555,14 @@ class Dexter_Capstone_UI:
 
     def show_arm_results(self):
         def content(frame):
-            try:
-                self.save_arm_results()
-                self.print_arm_results()
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to save or print results: {e}")
+            # try:
+            #     self.save_arm_results()
+            #     self.print_arm_results()
+            # except Exception as e:
+            #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Total Camber:\t{self.relative_X_angle:.4f}°\nTotal Toe:\t{self.relative_Z_angle:.4f}°')
+            results = (f'Total Camber:\t{self.camber:.4f}°\nTotal Toe:\t{self.toe:.4f}°')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))

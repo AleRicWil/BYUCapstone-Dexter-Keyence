@@ -410,7 +410,7 @@ class Torsion_Arm_LJS640:
             pcd = Numpy_to_Open3D(self.spindle_cloud)
             #visualize_axis(pcd, c_axis, axis_dir, length=100)
 
-    def fit_spindle2(self, axial_cutoff=-145, num_bins=20, circle_fit_tol=0.3, circle_resid_tol=[1.0], min_fit_points=200, centers_resid_tol=[1.0], show=False, plot=False):
+    def fit_spindle2(self, axial_cutoff=-145, num_bins=20, side='left', circle_fit_tol=0.3, circle_resid_tol=[1.0], min_fit_points=200, centers_resid_tol=[1.0], show=False, plot=False):
         '''
         Parameters:
             axial_cutoff: value above which all points are the spindle. Discards dogbone and bar below
@@ -437,11 +437,8 @@ class Torsion_Arm_LJS640:
         
         # Select half of scan which includes spindle
             # Calculate distances along axis from starting_point
-        starting_point = self.bar_faces_highest_point
-        delta = self.cloud.T - starting_point
-        s = delta @ approx_axis
-        mask = (s <= axial_cutoff)
-        spindle_half = self.cloud.T[mask, :]
+        spindle_half = self.select_spindle_points(axial_cutoff, side)
+        self.spindle_cloud = spindle_half
         # if show:
         #     self.show_cloud(spindle_half.T)
         
@@ -453,8 +450,8 @@ class Torsion_Arm_LJS640:
         # Map planar spindle points back to original 3D cloud
         plane_points = np.dot(spindle_half, np.array([u, v]).T)  # Recalculate plane_points
         # Create a mask for points in plane_spindle
-        mask = np.isin(plane_points, plane_spindle).all(axis=1)
-        spindle_bounded = spindle_half[mask]
+        #mask = np.isin(plane_points, plane_spindle).all(axis=1)
+        spindle_bounded = spindle_half
         if show:
             self.show_cloud(spindle_bounded.T)
         '''End of finding spindle within cloud'''
@@ -1906,7 +1903,8 @@ class Torsion_Arm_LJS640:
         #region 2D SLICES FIT
         approx_axis = self.spindle_axis
         good_spindle_points = self.combine_panels_into_single_panel(self.panel_groups).points
-        self.show_cloud(good_spindle_points)
+        if show_flag:
+            self.show_cloud(good_spindle_points)
         if abs(approx_axis[0]) < min(abs(approx_axis[1]), abs(approx_axis[2])):
             u = np.array([1, 0, 0])
         elif abs(approx_axis[1]) < abs(approx_axis[2]):
