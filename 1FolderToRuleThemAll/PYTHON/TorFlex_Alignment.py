@@ -1976,7 +1976,7 @@ class Torsion_Arm_LJS640:
             raise ValueError("Not enough valid circle fits to determine the axis.")
         centers = np.array(centers)
         np.savetxt(r'C:\Users\Public\CapstoneUI\centers.csv', centers, delimiter=',', header='X Y Z')
-        print(f'Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
+        # print(f'Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
         c_axis = np.mean(centers, axis=0)
         # PCA for line direction
         U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
@@ -1988,7 +1988,7 @@ class Torsion_Arm_LJS640:
         points_on_line = c_axis + np.outer(projections, axis_dir)
         distances = np.linalg.norm(centers - points_on_line, axis=1)
         rmse = np.sqrt(np.mean(distances**2))
-        print(f'Axis fit rmse: {rmse}')
+        # print(f'Axis fit rmse: {rmse}')
         self.axis_loc = c_axis
         self.spindle_axis = axis_dir
 
@@ -2477,6 +2477,7 @@ def Plot_Cloud_PyVista(points, pointSize=1.0, ui=None):
     plotter.camera_position = 'xy'
     plotter.camera_set = True
     plotter.reset_camera()
+    plotter.camera.SetParallelProjection(True)
     plotter.show(auto_close=False, interactive=True)
 
 class UnionFind:
