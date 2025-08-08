@@ -27,7 +27,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     #scan1.fit_spindle(axial_cutoff=-100, num_bins=100, circle_fit_tol=0.18, show=True, plot=False)
     #scan1.fit_spindle2(axial_cutoff=-80, num_bins=80, circle_fit_tol=0.2, circle_resid_tol=[1.0], min_fit_points=300, centers_resid_tol=[2.0], show=False, plot=False)
     # print(f'Spindle Axis: {scan1.axis_dir}')
-    scan1.fit_spindle_3D3(axial_cutoff=-105, side='left', show_flag=True, box_size=8.0)
+    scan1.fit_spindle_3D3(axial_cutoff=-105, side='left', show_flag=False, box_size=8.0)
     # print(f'Spindle Axis: {scan1.spindle_axis}')
 
     # scan1.visualize_axes(length=100)
