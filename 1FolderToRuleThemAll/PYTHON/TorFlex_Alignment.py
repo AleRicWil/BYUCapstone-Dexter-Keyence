@@ -1605,7 +1605,7 @@ class Torsion_Arm_LJS640:
             mask = radial_errors <= upper_bound
             if keep_inner:
                 radial_errors = distance_to_axis - R
-                mask = (radial_errors <= upper_bound*1.0) & (distance_to_axis <= 50)
+                mask = (radial_errors <= upper_bound*1.0) & (distance_to_axis <= 65)
             points = points[mask]
 
             
