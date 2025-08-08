@@ -1929,7 +1929,8 @@ class Torsion_Arm_LJS640:
         self.panels.extend(new_good_panels)
 
 
-        print(f'Showing good panels down to {box_size/3}mm'); self.visualize_good_panels()
+        if show_flag:
+            print(f'Showing good panels down to {box_size/3}mm'); self.visualize_good_panels()
         # for panel in self.panels:
         #     self.plot_panel_fit(panel)
         #endregion
