@@ -185,7 +185,7 @@ class Torsion_Arm_LJS640:
         self.ledgeThreshold = 0.1
         self.barFaceRadius = 120
         self.minPoints = 10000
-        self.anglePoints = 5000
+        self.anglePoints = 8000
         self.norm_tolerance_deg = 10.0
         self.dist_tolerange_mm = 15.0
         self.max_x_width = 640
@@ -663,7 +663,7 @@ class Torsion_Arm_LJS640:
         z_values = self.cloud.T[mask, 2]  # Assuming z is the third column (index 2)
         z_max = np.max(z_values)
         z_threshold = z_max - 20
-        z_threshold_back = z_threshold - 60
+        z_threshold_back = z_threshold - 45
         z_mask = (z_values <= z_threshold) & (z_values >= z_threshold_back)
         final_mask = mask.copy()
         final_mask[final_mask] = z_mask
@@ -1561,6 +1561,9 @@ class Torsion_Arm_LJS640:
         
         for iqr_scale in iqr_scales:
             # Fit cylinder to current points
+            if len(points) < 30:
+                panel.good_fit_flag = False
+                return
             xy_centroid = np.mean(points[:, :2], axis=0)
             x_size = np.max(points[:, 0]) - np.min(points[:, 0])
             temp_panel = self.Panel(center=xy_centroid, size=x_size, points=points.T)
@@ -2048,7 +2051,7 @@ class Torsion_Arm_LJS640:
             distances = np.linalg.norm(centers - points_on_line, axis=1)
             stddev = np.std(distances)
             print(f'Centers stddev: {stddev:.3f}')
-            if stddev <= 0.030 or len(centers)/len(centers_orig) < 0.70:
+            if stddev <= 0.028 or len(centers)/len(centers_orig) < 0.70:
                 return centers
             # Compute IQR and bounds for outlier filtering
             q1, q3 = np.percentile(distances, [25, 75])
