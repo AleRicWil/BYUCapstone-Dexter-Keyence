@@ -256,11 +256,11 @@ class Torsion_Arm_LJS640:
 
     def fit_bar_faces(self, cutOff=[-500, 500], plotNum=0, show=False):
         barCloud = Trim_Cloud(self.cloud, 'x', cutOff)
-        barCloud = Trim_Cloud(barCloud, 'z', [-700, 500])   #70, 500
-        # print('Showing bar cloud'); self.show_cloud(barCloud)
+        barCloud = Trim_Cloud(barCloud, 'z', [70, 500])   #70, 500
+        print('Showing bar cloud'); self.show_cloud(barCloud)
 
         # Find primary face
-        barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)
+        barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)  #6
         primaryLedges, primaryLedgeAvgs = Find_Ledges_Along_Normal(barPrimaryFaces, normal=self.exp_norm, ledgeThreshold=self.ledgeThreshold, shortLedge=0.01, closeLedges=self.closeLedges)
         self.barPrimaryFace = Sort_Ledges(primaryLedges, primaryLedgeAvgs, sortType='size')[0][-1]
         # self.show_cloud(self.barPrimaryFace)
@@ -271,7 +271,7 @@ class Torsion_Arm_LJS640:
 
         # Find secondary face, which is perpendicular to primary
         exp_secondary_norm = Rotate(barPrimaryNormal, axis='x', angle=90.0)
-        barSecondaryFaces = Cloud_Expected_Normal_Filter(barCloud, exp_secondary_norm, 3)
+        barSecondaryFaces = Cloud_Expected_Normal_Filter(barCloud, exp_secondary_norm, 3)   # 3
         secondaryLedges, secondaryLedgeAvgs = Find_Ledges_Along_Normal(barSecondaryFaces, normal=exp_secondary_norm, ledgeThreshold=self.ledgeThreshold, shortLedge=0.1, closeLedges=self.closeLedges)
         
         # for ledge in secondaryLedges:
@@ -671,8 +671,8 @@ class Torsion_Arm_LJS640:
         # Compute z maximum and filter points within 10 of it
         z_values = self.cloud.T[mask, 2]  # Assuming z is the third column (index 2)
         z_max = np.max(z_values)
-        z_threshold = z_max - 0 #20
-        z_threshold_back = z_threshold - 45
+        z_threshold = z_max - 20 #20
+        z_threshold_back = z_threshold - 45 #45
         z_mask = (z_values <= z_threshold) & (z_values >= z_threshold_back)
         final_mask = mask.copy()
         final_mask[final_mask] = z_mask
@@ -1858,7 +1858,7 @@ class Torsion_Arm_LJS640:
         #region ITERATIVE GRID SEARCH FOR LOW NOISE
         # Store overlap_factor for use in create_grid
         self.overlap_factor = overlap_factor
-        col_tol = 0.79
+        col_tol = 0.99  # 0.99
         
         # Setup coordinate system and project points
         spindle_points = self.select_spindle_points(axial_cutoff, side)
@@ -2026,16 +2026,16 @@ class Torsion_Arm_LJS640:
                 theta = np.linspace(0, 2 * np.pi, 100)
                 x_circle = center_2d[0] + radius * np.cos(theta)
                 y_circle = center_2d[1] + radius * np.sin(theta)
-                # plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
-                # plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
-                # plt.scatter(center_2d[0], center_2d[1])
-                # plt.title(f"Projected Slice {i}. rmse: {rmse}")
-                # plt.xlim(-maxC, maxC)
-                # plt.ylim(-maxC, maxC)
-                # plt.axis('equal')
-                # plt.xlabel("u-axis")
-                # plt.ylabel("v-axis")
-                # plt.show()
+                plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
+                plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
+                plt.scatter(center_2d[0], center_2d[1])
+                plt.title(f"Projected Slice {i}. stddev: {stddev}")
+                plt.xlim(-maxC, maxC)
+                plt.ylim(-maxC, maxC)
+                plt.axis('equal')
+                plt.xlabel("u-axis")
+                plt.ylabel("v-axis")
+                plt.show()
         
         # Fit a line to 3D centers and compute standard deviation of distances to axis
         def fit_axis(centers, approx_axis):
@@ -2214,7 +2214,7 @@ class Torsion_Arm_LJS640:
 
         # Choose reference vector for defining local y-axis
         ref = np.array([0, 0, 1])
-        if np.abs(u_x[2]) > 0.999:  # If bar is nearly vertical, use global x-axis
+        if np.abs(u_x[2]) > 0.99999:  # If bar is nearly vertical, use global x-axis
             ref = np.array([1, 0, 0])
 
         # Define local y- and z-axes
