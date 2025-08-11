@@ -237,7 +237,7 @@ if __name__ == '__main__':
     # p.show()
 
     # load in stl and orient axes
-    filename = r'STLs\Crank Arm 45deg_10_dogroll.STL'
+    filename = r'STLs\Crank Arm 45deg_5_toein.STL'
     myMesh = pv.read(filename)
     myMesh.translate([-myMesh.center[0], -myMesh.center[1], -myMesh.center[2]])
     myMesh = myMesh.rotate_x(45).rotate_y(180).rotate_z(0)  # 180, 0, 90 for axle stl
@@ -293,7 +293,7 @@ if __name__ == '__main__':
 
     for i in range(len(myScans)):
         Plot_Scan(myScans[i][0], myScans[i][1], plotNum=i, plotTrue=False)
-        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/CrankArm45up_1deg.txt')
+        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/CrankArm45deg_5toein.txt')
 
 
     print(f'Duration: {end_time-start_time:.3f}')
