@@ -226,6 +226,15 @@ class Torsion_Arm_LJS640:
             self.cloud = np.array([x, y, z])
             self.numPoints = self.cloud.shape[1]
         
+        elif scanType == 'sim':
+            data = np.loadtxt(filename, skiprows=1)
+            self.numProfiles, self.numPoints = data.shape
+            x = data[:,0]
+            y = data[:,1]
+            z = data[:,2]
+            self.cloud = np.array([x, y, z])
+            self.numPoints = self.cloud.shape[1]
+
     def downsample_cloud(self, maxPoints):
         if self.numPoints > maxPoints:
             sampled_indices = np.linspace(0, self.numPoints - 1, maxPoints, dtype=int)
@@ -247,7 +256,7 @@ class Torsion_Arm_LJS640:
 
     def fit_bar_faces(self, cutOff=[-500, 500], plotNum=0, show=False):
         barCloud = Trim_Cloud(self.cloud, 'x', cutOff)
-        barCloud = Trim_Cloud(barCloud, 'z', [70, 500])
+        barCloud = Trim_Cloud(barCloud, 'z', [-700, 500])   #70, 500
         # print('Showing bar cloud'); self.show_cloud(barCloud)
 
         # Find primary face
@@ -662,7 +671,7 @@ class Torsion_Arm_LJS640:
         # Compute z maximum and filter points within 10 of it
         z_values = self.cloud.T[mask, 2]  # Assuming z is the third column (index 2)
         z_max = np.max(z_values)
-        z_threshold = z_max - 20
+        z_threshold = z_max - 0 #20
         z_threshold_back = z_threshold - 45
         z_mask = (z_values <= z_threshold) & (z_values >= z_threshold_back)
         final_mask = mask.copy()
@@ -1849,7 +1858,7 @@ class Torsion_Arm_LJS640:
         #region ITERATIVE GRID SEARCH FOR LOW NOISE
         # Store overlap_factor for use in create_grid
         self.overlap_factor = overlap_factor
-        col_tol = 0.99
+        col_tol = 0.79
         
         # Setup coordinate system and project points
         spindle_points = self.select_spindle_points(axial_cutoff, side)
@@ -1877,7 +1886,7 @@ class Torsion_Arm_LJS640:
         # Fit cylinders and filter bad sections
         for panel in self.panels:
             self.fit_cylinder_to_panel(panel)
-            if panel.fit_params['stddev'] > 2.0 and panel.fit_params['colinearity'] >= 0.95:
+            if panel.fit_params['stddev'] > 2.0 and panel.fit_params['colinearity'] >= col_tol-0.04:
                 # self.plot_panel_fit(panel)
                 self.filter_outliers_in_panel(panel, iqr_scales=[1.0, 0.8, 0.8], keep_inner=True)
                 # print(f'Showing filtered panel in {box_size}mm')
@@ -1939,7 +1948,7 @@ class Torsion_Arm_LJS640:
 
         #region GROUP SLICES BY RADIUS AND SELECT GOOD POINTS
         self.group_panels_by_radius(radius_tolerance=0.10, max_radius=50)
-        # print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
+        print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
         # self.fit_axis_to_weighted_spindle_panels2(knn=80, view_normals=True)
 
         for panel in self.panel_groups:
