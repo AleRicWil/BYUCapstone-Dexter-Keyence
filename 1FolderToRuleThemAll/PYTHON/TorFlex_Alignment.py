@@ -651,13 +651,16 @@ class Torsion_Arm_LJS640:
         v = np.cross(approx_axis, u)
         return u, v
 
-    def select_spindle_points(self, axial_cutoff, side):
+    def select_spindle_points(self, axial_cutoff, side, show_flag=False):
         """Select points along the bar axis below the axial cutoff."""
         projection = np.dot(self.cloud.T, self.bar_axis)
         if side == 'left':
             mask = (projection <= axial_cutoff)
         elif side == 'right':
             mask = (projection >= axial_cutoff)
+
+        if show_flag:
+            self.show_cloud(self.cloud.T[mask, :].T)
 
         # Compute z maximum and filter points within 10 of it
         z_values = self.cloud.T[mask, 2]  # Assuming z is the third column (index 2)
@@ -1849,7 +1852,7 @@ class Torsion_Arm_LJS640:
         col_tol = 0.99
         
         # Setup coordinate system and project points
-        spindle_points = self.select_spindle_points(axial_cutoff, side)
+        spindle_points = self.select_spindle_points(axial_cutoff, side, show_flag=show_flag)
         self.spindle_cloud = spindle_points
         if show_flag:
             print('Showing spindle'); self.show_cloud(spindle_points.T)
