@@ -563,7 +563,7 @@ class Dexter_Capstone_UI:
             #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Total Camber:\t{self.camber:.4f}°\nTotal Toe:\t{self.toe:.4f}°\nTotal Angle:\t{self.total_angle:.4f}')
+            results = (f'Total Camber:\t{self.camber:.2f}°\nTotal Toe:\t{self.toe:.2f}°\nTotal Angle:\t{self.total_angle:.4f}')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))

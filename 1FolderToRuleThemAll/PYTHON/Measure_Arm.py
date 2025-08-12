@@ -20,7 +20,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     #scan1.show_cloud()
 
     # Find bar faces
-    scan1.fit_bar_faces(plotNum=0, cutOff=[-65, 500], show=True)    #-25, 300
+    scan1.fit_bar_faces(plotNum=0, cutOff=[-65, 500], show=False)    #-25, 300
     # print(f'Bar Axis: {scan1.bar_axis}')
 
     # Find spindle
@@ -51,5 +51,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\Buggy Scans\1ATest.csv', scan_type='live')
+    main(filename=r'RealScans\Validation\LeftTest.csv', scan_type='live')
  
