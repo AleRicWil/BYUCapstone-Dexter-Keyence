@@ -185,7 +185,7 @@ class Torsion_Arm_LJS640:
         self.ledgeThreshold = 0.1
         self.barFaceRadius = 120
         self.minPoints = 10000
-        self.anglePoints = 5000
+        self.anglePoints = 8000
         self.norm_tolerance_deg = 10.0
         self.dist_tolerange_mm = 15.0
         self.max_x_width = 640
@@ -226,6 +226,15 @@ class Torsion_Arm_LJS640:
             self.cloud = np.array([x, y, z])
             self.numPoints = self.cloud.shape[1]
         
+        elif scanType == 'sim':
+            data = np.loadtxt(filename, skiprows=1)
+            self.numProfiles, self.numPoints = data.shape
+            x = data[:,0]
+            y = data[:,1]
+            z = data[:,2]
+            self.cloud = np.array([x, y, z])
+            self.numPoints = self.cloud.shape[1]
+
     def downsample_cloud(self, maxPoints):
         if self.numPoints > maxPoints:
             sampled_indices = np.linspace(0, self.numPoints - 1, maxPoints, dtype=int)
@@ -247,11 +256,11 @@ class Torsion_Arm_LJS640:
 
     def fit_bar_faces(self, cutOff=[-500, 500], plotNum=0, show=False):
         barCloud = Trim_Cloud(self.cloud, 'x', cutOff)
-        barCloud = Trim_Cloud(barCloud, 'z', [70, 500])
-        # print('Showing bar cloud'); self.show_cloud(barCloud)
+        barCloud = Trim_Cloud(barCloud, 'z', [70, 500])   #70, 500
+        print('Showing bar cloud'); self.show_cloud(barCloud)
 
         # Find primary face
-        barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)
+        barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)  #6
         primaryLedges, primaryLedgeAvgs = Find_Ledges_Along_Normal(barPrimaryFaces, normal=self.exp_norm, ledgeThreshold=self.ledgeThreshold, shortLedge=0.01, closeLedges=self.closeLedges)
         self.barPrimaryFace = Sort_Ledges(primaryLedges, primaryLedgeAvgs, sortType='size')[0][-1]
         # self.show_cloud(self.barPrimaryFace)
@@ -262,7 +271,7 @@ class Torsion_Arm_LJS640:
 
         # Find secondary face, which is perpendicular to primary
         exp_secondary_norm = Rotate(barPrimaryNormal, axis='x', angle=90.0)
-        barSecondaryFaces = Cloud_Expected_Normal_Filter(barCloud, exp_secondary_norm, 3)
+        barSecondaryFaces = Cloud_Expected_Normal_Filter(barCloud, exp_secondary_norm, 3)   # 3
         secondaryLedges, secondaryLedgeAvgs = Find_Ledges_Along_Normal(barSecondaryFaces, normal=exp_secondary_norm, ledgeThreshold=self.ledgeThreshold, shortLedge=0.1, closeLedges=self.closeLedges)
         
         # for ledge in secondaryLedges:
@@ -665,8 +674,8 @@ class Torsion_Arm_LJS640:
         # Compute z maximum and filter points within 10 of it
         z_values = self.cloud.T[mask, 2]  # Assuming z is the third column (index 2)
         z_max = np.max(z_values)
-        z_threshold = z_max - 20
-        z_threshold_back = z_threshold - 60
+        z_threshold = z_max - 20 #20
+        z_threshold_back = z_threshold - 45 #45
         z_mask = (z_values <= z_threshold) & (z_values >= z_threshold_back)
         final_mask = mask.copy()
         final_mask[final_mask] = z_mask
@@ -1564,6 +1573,9 @@ class Torsion_Arm_LJS640:
         
         for iqr_scale in iqr_scales:
             # Fit cylinder to current points
+            if len(points) < 30:
+                panel.good_fit_flag = False
+                return
             xy_centroid = np.mean(points[:, :2], axis=0)
             x_size = np.max(points[:, 0]) - np.min(points[:, 0])
             temp_panel = self.Panel(center=xy_centroid, size=x_size, points=points.T)
@@ -1849,7 +1861,7 @@ class Torsion_Arm_LJS640:
         #region ITERATIVE GRID SEARCH FOR LOW NOISE
         # Store overlap_factor for use in create_grid
         self.overlap_factor = overlap_factor
-        col_tol = 0.99
+        col_tol = 0.99  # 0.99
         
         # Setup coordinate system and project points
         spindle_points = self.select_spindle_points(axial_cutoff, side, show_flag=show_flag)
@@ -1877,7 +1889,7 @@ class Torsion_Arm_LJS640:
         # Fit cylinders and filter bad sections
         for panel in self.panels:
             self.fit_cylinder_to_panel(panel)
-            if panel.fit_params['stddev'] > 2.0 and panel.fit_params['colinearity'] >= 0.95:
+            if panel.fit_params['stddev'] > 2.0 and panel.fit_params['colinearity'] >= col_tol-0.04:
                 # self.plot_panel_fit(panel)
                 self.filter_outliers_in_panel(panel, iqr_scales=[1.0, 0.8, 0.8], keep_inner=True)
                 # print(f'Showing filtered panel in {box_size}mm')
@@ -1940,7 +1952,7 @@ class Torsion_Arm_LJS640:
 
         #region GROUP SLICES BY RADIUS AND SELECT GOOD POINTS
         self.group_panels_by_radius(radius_tolerance=0.10, max_radius=50)
-        # print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
+        print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
         # self.fit_axis_to_weighted_spindle_panels2(knn=80, view_normals=True)
 
         for panel in self.panel_groups:
@@ -2018,16 +2030,16 @@ class Torsion_Arm_LJS640:
                 theta = np.linspace(0, 2 * np.pi, 100)
                 x_circle = center_2d[0] + radius * np.cos(theta)
                 y_circle = center_2d[1] + radius * np.sin(theta)
-                # plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
-                # plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
-                # plt.scatter(center_2d[0], center_2d[1])
-                # plt.title(f"Projected Slice {i}. rmse: {rmse}")
-                # plt.xlim(-maxC, maxC)
-                # plt.ylim(-maxC, maxC)
-                # plt.axis('equal')
-                # plt.xlabel("u-axis")
-                # plt.ylabel("v-axis")
-                # plt.show()
+                plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
+                plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
+                plt.scatter(center_2d[0], center_2d[1])
+                plt.title(f"Projected Slice {i}. stddev: {stddev}")
+                plt.xlim(-maxC, maxC)
+                plt.ylim(-maxC, maxC)
+                plt.axis('equal')
+                plt.xlabel("u-axis")
+                plt.ylabel("v-axis")
+                plt.show()
         
         # Fit a line to 3D centers and compute standard deviation of distances to axis
         def fit_axis(centers, approx_axis):
@@ -2052,7 +2064,7 @@ class Torsion_Arm_LJS640:
             distances = np.linalg.norm(centers - points_on_line, axis=1)
             stddev = np.std(distances)
             print(f'Centers stddev: {stddev:.3f}')
-            if stddev <= 0.030 or len(centers)/len(centers_orig) < 0.70:
+            if stddev <= 0.028 or len(centers)/len(centers_orig) < 0.70:
                 return centers
             # Compute IQR and bounds for outlier filtering
             q1, q3 = np.percentile(distances, [25, 75])
@@ -2206,7 +2218,7 @@ class Torsion_Arm_LJS640:
 
         # Choose reference vector for defining local y-axis
         ref = np.array([0, 0, 1])
-        if np.abs(u_x[2]) > 0.999:  # If bar is nearly vertical, use global x-axis
+        if np.abs(u_x[2]) > 0.99999:  # If bar is nearly vertical, use global x-axis
             ref = np.array([1, 0, 0])
 
         # Define local y- and z-axes

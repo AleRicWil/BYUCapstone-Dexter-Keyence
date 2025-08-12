@@ -237,10 +237,10 @@ if __name__ == '__main__':
     # p.show()
 
     # load in stl and orient axes
-    filename = r'STLs\Crank Arm Assembly 45 up_1deg.STL'
+    filename = r'STLs\Crank Arm 45deg_5_toein.STL'
     myMesh = pv.read(filename)
     myMesh.translate([-myMesh.center[0], -myMesh.center[1], -myMesh.center[2]])
-    myMesh = myMesh.rotate_x(45).rotate_y(180).rotate_z(0)  # 180, 0, 90 for axle stl
+    myMesh = myMesh.rotate_x(45).rotate_y(190).rotate_z(5)  # 180, 0, 90 for axle stl
 
 
     # store position information of stl. Used to position scanner
@@ -258,8 +258,8 @@ if __name__ == '__main__':
     myProfiles = []
     myTrueProfiles = []
     numPositions = 3
-    numProfiles = 801
-    numPoints = 801
+    numProfiles = 1001
+    numPoints = 1001
     railView = 30    # degrees. Angular span of rail
     scanView = 15                                                           
     alphas = np.linspace(railView*np.pi/180, -railView*np.pi/180, numPositions)  # horizontal angles to position scanner
@@ -293,7 +293,7 @@ if __name__ == '__main__':
 
     for i in range(len(myScans)):
         Plot_Scan(myScans[i][0], myScans[i][1], plotNum=i, plotTrue=False)
-        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/CrankArm45up_1deg.txt')
+        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/CrankArm45deg_5toein_tilt.txt')
 
 
     print(f'Duration: {end_time-start_time:.3f}')
