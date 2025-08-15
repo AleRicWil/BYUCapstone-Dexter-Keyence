@@ -17,7 +17,7 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     # Prepare data
     scan1.center_cloud()
     # scan1.rotate_cloud(axis='z', angle=180)
-    #scan1.show_cloud()
+    scan1.show_cloud()
 
     # Find bar faces
     scan1.fit_bar_faces(plotNum=0, cutOff=[-25, 500], show=True)    #-25, 300
@@ -51,5 +51,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\2A\2A04.csv', scan_type='live')
+    main(filename=r'3D Simulation\SimScans\CrankArm22.5-right_0toe_-5cam..txt', scan_type='sim')
  
