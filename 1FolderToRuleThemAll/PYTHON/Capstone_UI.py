@@ -540,7 +540,7 @@ class Dexter_Capstone_UI:
             #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Average Toe:\t{self.toe_avg:.4f}°\nAverage Camber:\t{self.camber_avg:.4f}°\nAverage Total Angle:\t{self.total_angle_avg}°')
+            results = (f'Average Toe:\t{self.toe_avg:.4f}°\nAverage Camber:\t{self.camber_avg:.4f}°\nAverage Total Angle:\t{self.total_angle_avg:.4f}°')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
@@ -579,8 +579,8 @@ class Dexter_Capstone_UI:
 
     def save_repeated_arm_avg_results(self):
         df = pd.read_csv(self.arm_database_path, dtype=str)
-        df.loc[df["Arm ID"] == f'{self.arm_id} avg', ["Toe", "Camber",
-                                                    "Total Relative Angle", "Date Scanned"]] = [self.toe_avg, self.camber_avg,
+        df.loc[df["Arm ID"] == self.arm_id, ["Toe", "Camber",
+                                                "Total Relative Angle", "Date Scanned"]] = [self.toe_avg, self.camber_avg,
                                                                                             self.total_angle_avg, date.today()]
         df.to_csv(self.arm_database_path, index=False)
         self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
