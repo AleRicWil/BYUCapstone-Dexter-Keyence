@@ -139,7 +139,7 @@ class Dexter_Capstone_UI:
         self.master.update()
 
         self.toe_arr = np.empty(0)
-        self.camber_arr = np.emtpy(0)
+        self.camber_arr = np.empty(0)
         self.total_angle_arr = np.empty(0)
 
         for index in range(self.scan_count):
