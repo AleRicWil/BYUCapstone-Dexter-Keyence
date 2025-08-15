@@ -493,8 +493,7 @@ class Dexter_Capstone_UI:
 
                     if (self.index + 1 >= self.scan_count):
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
-                        self.master.after(0, self.save_repeated_arm_avg_results, scan_text)
-                        self.master.after(0, self.show_repeated_arm_results)
+                        self.master.after(0, self.show_repeated_arm_results, scan_text)
                     else:
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
                         return
@@ -533,7 +532,7 @@ class Dexter_Capstone_UI:
             self.master.bind("<Return>", lambda event: self.measure_arm())
         self.setup_screen("Results", content)
 
-    def show_repeated_arm_results(self):
+    def show_repeated_arm_results(self, scan_text):
         def content(frame):
             # try:
             #     self.print_arm_results()
@@ -541,7 +540,7 @@ class Dexter_Capstone_UI:
             #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Average Toe:\t{self.toe_avg:.4f}°\nAverage Camber:\t{self.camber_avg:.4f}°')
+            results = (f'Average Toe:\t{self.toe_avg:.4f}°\nAverage Camber:\t{self.camber_avg:.4f}°\nAverage Total Angle:\t{self.total_angle_avg}°')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
@@ -551,6 +550,7 @@ class Dexter_Capstone_UI:
         self.camber_avg = self.camber_sum / self.total_scans
         self.total_angle_avg = self.total_angle_sum / self.total_scans
 
+        self.master.after(0, self.save_repeated_arm_avg_results, scan_text)
         self.setup_screen("Results", content)
 
     def save_arm_results(self):
