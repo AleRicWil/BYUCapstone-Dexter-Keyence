@@ -550,7 +550,7 @@ class Dexter_Capstone_UI:
         self.camber_avg = self.camber_sum / self.total_scans
         self.total_angle_avg = self.total_angle_sum / self.total_scans
 
-        self.master.after(0, self.save_repeated_arm_avg_results, scan_text)
+        self.master.after(0, self.save_repeated_arm_avg_results)
         self.setup_screen("Results", content)
 
     def save_arm_results(self):
@@ -567,7 +567,7 @@ class Dexter_Capstone_UI:
 
     def save_repeated_arm_results(self, scan_text):
         df = pd.read_csv(self.arm_database_path, dtype=str)
-        df.loc[df["Arm ID"] == f'{scan_text} avg', ["Bar Toe", "Bar Camber",
+        df.loc[df["Arm ID"] == scan_text, ["Bar Toe", "Bar Camber",
                                             "Spindle Toe", "Spindle Camber",
                                             "Toe", "Camber",
                                             "Total Relative Angle", "Date Scanned"]] = [self.bar_toe, self.bar_camber,
@@ -577,13 +577,13 @@ class Dexter_Capstone_UI:
         df.to_csv(self.arm_database_path, index=False)
         self.update_status(f"Scan results saved for Arm ID {scan_text}")
 
-    def save_repeated_arm_avg_results(self, scan_text):
+    def save_repeated_arm_avg_results(self):
         df = pd.read_csv(self.arm_database_path, dtype=str)
-        df.loc[df["Arm ID"] == scan_text, ["Toe", "Camber",
-                                            "Total Relative Angle", "Date Scanned"]] = [self.toe_avg, self.camber_avg,
+        df.loc[df["Arm ID"] == f'{self.arm_id} avg', ["Toe", "Camber",
+                                                    "Total Relative Angle", "Date Scanned"]] = [self.toe_avg, self.camber_avg,
                                                                                             self.total_angle_avg, date.today()]
         df.to_csv(self.arm_database_path, index=False)
-        self.update_status(f"Scan results saved for Arm ID {scan_text}")
+        self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
 
     def print_arm_results(self):
         pdf_path = os.path.join(r"C:\Users\Public\CapstoneUI", f"{self.arm_id}.pdf")
