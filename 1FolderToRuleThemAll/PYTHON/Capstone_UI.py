@@ -138,21 +138,11 @@ class Dexter_Capstone_UI:
             self.setup_screen("TorFlex Axle — Measure Arm Alignment", content, home_button=False)
         self.master.update()
 
-        # self.total_scans = self.scan_count
+        self.total_scans = self.scan_count
 
-        # self.bar_X_angle_sum = 0
-        # self.bar_Y_angle_sum = 0
-        # self.bar_Z_angle_sum = 0
-
-        # self.spindle_X_angle_sum = 0
-        # self.spindle_Y_angle_sum = 0
-        # self.spindle_Z_angle_sum = 0
-
-        # self.relative_X_angle_sum = 0
-        # self.relative_Y_angle_sum = 0
-        # self.relative_Z_angle_sum = 0
-
-        # self.total_arm_angle_sum = 0
+        self.toe_sum = 0
+        self.camber_sum = 0
+        self.total_angle_sum = 0
 
         for index in range(self.scan_count):
             data = PS.perform_scan().astype(float)
@@ -165,9 +155,9 @@ class Dexter_Capstone_UI:
                 scan_text = f'{self.arm_id}{index + 1}'
 
             os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
-            self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar X Angle", "Bar Y Angle", "Bar Z Angle",
-                                                          "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle",
-                                                          "Relative X Angle", "Relative Y Angle", "Relative Z Angle",
+            self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar Toe", "Bar Camber",
+                                                          "Spindle Toe", "Spindle Camber",
+                                                          "Toe", "Camber",
                                                             "Total Relative Angle", "Date Scanned"])
             df = pd.read_csv(self.arm_database_path, dtype=str)
             if scan_text not in df["Arm ID"].values:
@@ -267,9 +257,9 @@ class Dexter_Capstone_UI:
                 return
 
             os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
-            self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar X Angle", "Bar Y Angle", "Bar Z Angle",
-                                                          "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle",
-                                                          "Relative X Angle", "Relative Y Angle", "Relative Z Angle",
+            self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar Toe", "Bar Camber",
+                                                          "Spindle Toe", "Spindle Camber",
+                                                          "Toe", "Camber",
                                                             "Total Relative Angle", "Date Scanned"])
             df = pd.read_csv(self.arm_database_path, dtype=str)
             if self.arm_id not in df["Arm ID"].values:
@@ -454,19 +444,6 @@ class Dexter_Capstone_UI:
                 scan_results = MA.main(self.arm_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 if isinstance(scan_results, dict) and isinstance(scan_results, dict):
-                    # self.bar_X_angle = scan_results.get("bar_x_angle", "N/A")
-                    # self.bar_Y_angle = scan_results.get("bar_y_angle", "N/A")
-                    # self.bar_Z_angle = scan_results.get("bar_z_angle", "N/A")
-
-                    # self.spindle_X_angle = scan_results.get("spindle_x_angle", "N/A")
-                    # self.spindle_Y_angle = scan_results.get("spindle_y_angle", "N/A")
-                    # self.spindle_Z_angle = scan_results.get("spindle_z_angle", "N/A")
-
-                    # self.relative_X_angle = scan_results.get("rel_x_angle", "N/A")
-                    # self.relative_Y_angle = scan_results.get("rel_y_angle", "N/A")
-                    # self.relative_Z_angle = scan_results.get("rel_z_angle", "N/A")
-
-                    # self.total_arm_angle = scan_results.get("total_angle", "N/A")
 
                     self.toe = scan_results.get("toe", "N/A")
                     self.camber = scan_results.get("camber", "N/A")
@@ -500,33 +477,14 @@ class Dexter_Capstone_UI:
                 scan_results = MA.main(self.arm_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 if isinstance(scan_results, dict) and isinstance(scan_results, dict):
-                    self.bar_X_angle = scan_results.get("bar_x_angle", "N/A")
-                    self.bar_Y_angle = scan_results.get("bar_y_angle", "N/A")
-                    self.bar_Z_angle = scan_results.get("bar_z_angle", "N/A")
+                    self.toe = scan_results.get("toe", "N/A")
+                    self.camber = scan_results.get("camber", "N/A")
+                    self.total_angle = scan_results.get("total_misalign", "N/A")
 
-                    self.spindle_X_angle = scan_results.get("spindle_x_angle", "N/A")
-                    self.spindle_Y_angle = scan_results.get("spindle_y_angle", "N/A")
-                    self.spindle_Z_angle = scan_results.get("spindle_z_angle", "N/A")
+                    self.toe_sum += self.toe
+                    self.camber_sum += self.camber
 
-                    self.relative_X_angle = scan_results.get("rel_x_angle", "N/A")
-                    self.relative_Y_angle = scan_results.get("rel_y_angle", "N/A")
-                    self.relative_Z_angle = scan_results.get("rel_z_angle", "N/A")
-
-                    self.total_arm_angle = scan_results.get("total_angle", "N/A")
-
-                    self.bar_X_angle_sum += self.bar_X_angle
-                    self.bar_Y_angle_sum += self.bar_Y_angle
-                    self.bar_Z_angle_sum += self.bar_Z_angle
-
-                    self.spindle_X_angle_sum += self.spindle_X_angle
-                    self.spindle_Y_angle_sum += self.spindle_Y_angle
-                    self.spindle_Z_angle_sum += self.spindle_Z_angle
-
-                    self.relative_X_angle_sum += self.relative_X_angle
-                    self.relative_Y_angle_sum += self.relative_Y_angle
-                    self.relative_Z_angle_sum += self.relative_Z_angle
-
-                    self.total_arm_angle_sum += self.total_arm_angle
+                    self.total_angle_sum += self.total_angle
 
                     if (self.index + 1 >= self.scan_count):
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
@@ -553,7 +511,6 @@ class Dexter_Capstone_UI:
         # threading.Thread(target=compute_alignment, daemon=True).start()
         # self.master.after(100, update_ui)
     
-
     def show_arm_results(self):
         def content(frame):
             # try:
@@ -563,7 +520,7 @@ class Dexter_Capstone_UI:
             #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Total Camber:\t{self.camber:.2f}°\nTotal Toe:\t{self.toe:.2f}°\nTotal Angle:\t{self.total_angle:.4f}')
+            results = (f'Total Toe:\t{self.toe:.2f}°\nTotal Camber:\t{self.camber:.2f}°\nTotal Angle:\t{self.total_angle:.4f}°')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
@@ -573,69 +530,46 @@ class Dexter_Capstone_UI:
     def show_repeated_arm_results(self):
         def content(frame):
             try:
-                self.save_average_arm_results()
                 self.print_arm_results()
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Average Camber:\t{self.relative_X_angle_avg:.4f}°\nRelative Toe:\t{self.relative_Z_angle_avg:.4f}°')
+            results = (f'Average Toe:\t{self.toe_avg:.4f}°\nAverage Camber:\t{self.camber_avg:.4f}°')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
             self.master.bind("<Return>", lambda event: self.measure_arm())
 
-        self.bar_X_angle_avg = self.bar_X_angle_sum / self.total_scans
-        self.bar_Y_angle_avg = self.bar_Y_angle_sum / self.total_scans
-        self.bar_Z_angle_avg = self.bar_Z_angle_sum / self.total_scans
-
-        self.spindle_X_angle_avg = self.spindle_X_angle_sum / self.total_scans
-        self.spindle_Y_angle_avg = self.spindle_Y_angle_sum / self.total_scans
-        self.spindle_Z_angle_avg = self.spindle_Z_angle_sum / self.total_scans
-
-        self.relative_X_angle_avg = self.relative_X_angle_sum / self.total_scans
-        self.relative_Y_angle_avg = self.relative_Y_angle_sum / self.total_scans
-        self.relative_Z_angle_avg = self.relative_Z_angle_sum / self.total_scans
-
-        self.total_arm_angle_avg = self.total_arm_angle_sum / self.total_scans
+        self.toe_avg = self.toe_sum / self.total_scans
+        self.camber_avg = self.camber_sum / self.total_scans
+        self.total_angle_avg = self.total_angle_sum / self.total_scans
 
         self.setup_screen("Results", content)
 
     def save_arm_results(self):
         df = pd.read_csv(self.arm_database_path, dtype=str)
-        df.loc[df["Arm ID"] == self.arm_id, ["Bar X Angle", "Bar Y Angle", "Bar Z Angle",
-                                             "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle", 
-                                             "Relative X Angle", "Relative Y Angle", "Relative Z Angle", 
-                                                "Total Relative Angle", "Date Scanned"]] = [self.bar_X_angle, self.bar_Y_angle, self.bar_Z_angle,
-                                                                                            self.spindle_X_angle, self.spindle_Y_angle, self.spindle_Z_angle, 
-                                                                                            self.relative_X_angle, self.relative_Y_angle, self.relative_Z_angle, 
-                                                                                            self.total_arm_angle, date.today()]
+        df.loc[df["Arm ID"] == self.arm_id, ["Bar Toe", "Bar Camber",
+                                            "Spindle Toe", "Spindle Camber",
+                                            "Toe", "Camber",
+                                            "Total Relative Angle", "Date Scanned"]] = [self.bar_toe, self.bar_camber,
+                                                                                            self.spindle_toe, self.spindle_camber,
+                                                                                            self.toe, self.camber,
+                                                                                            self.total_angle, date.today()]
         df.to_csv(self.arm_database_path, index=False)
         self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
 
     def save_repeated_arm_results(self, scan_text):
         df = pd.read_csv(self.arm_database_path, dtype=str)
-        df.loc[df["Arm ID"] == scan_text, ["Bar X Angle", "Bar Y Angle", "Bar Z Angle",
-                                             "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle", 
-                                             "Relative X Angle", "Relative Y Angle", "Relative Z Angle", 
-                                                "Total Relative Angle", "Date Scanned"]] = [self.bar_X_angle, self.bar_Y_angle, self.bar_Z_angle,
-                                                                                            self.spindle_X_angle, self.spindle_Y_angle, self.spindle_Z_angle, 
-                                                                                            self.relative_X_angle, self.relative_Y_angle, self.relative_Z_angle, 
-                                                                                            self.total_arm_angle, date.today()]
+        df.loc[df["Arm ID"] == scan_text, ["Bar Toe", "Bar Camber",
+                                            "Spindle Toe", "Spindle Camber",
+                                            "Toe", "Camber",
+                                            "Total Relative Angle", "Date Scanned"]] = [self.bar_toe, self.bar_camber,
+                                                                                            self.spindle_toe, self.spindle_camber,
+                                                                                            self.toe, self.camber,
+                                                                                            self.total_angle, date.today()]
         df.to_csv(self.arm_database_path, index=False)
         self.update_status(f"Scan results saved for Arm ID {scan_text}")
-
-    def save_average_arm_results(self):
-        df = pd.read_csv(self.arm_database_path, dtype=str)
-        df.loc[df["Arm ID"] == self.arm_id, ["Bar X Angle", "Bar Y Angle", "Bar Z Angle",
-                                             "Spindle X Angle", "Spindle Y Angle", "Spindle Z Angle", 
-                                             "Relative X Angle", "Relative Y Angle", "Relative Z Angle", 
-                                                "Total Relative Angle", "Date Scanned"]] = [self.bar_X_angle_avg, self.bar_Y_angle_avg, self.bar_Z_angle_avg,
-                                                                                            self.spindle_X_angle_avg, self.spindle_Y_angle_avg, self.spindle_Z_angle_avg, 
-                                                                                            self.relative_X_angle_avg, self.relative_Y_angle_avg, self.relative_Z_angle_avg, 
-                                                                                            self.total_arm_angle_avg, date.today()]
-        df.to_csv(self.arm_database_path, index=False)
-        self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
 
     def print_arm_results(self):
         pdf_path = os.path.join(r"C:\Users\Public\CapstoneUI", f"{self.arm_id}.pdf")
