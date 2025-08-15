@@ -169,7 +169,6 @@ class Dexter_Capstone_UI:
             if self.type == 'arm':
                 self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{scan_text}.csv'
             np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
-            self.message_log(f'Scan {index} complete')
         
         for self.index in range(self.scan_count):
             if self.index + 1 < 10:
