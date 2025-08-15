@@ -477,6 +477,11 @@ class Dexter_Capstone_UI:
                 scan_results = MA.main(self.arm_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 if isinstance(scan_results, dict) and isinstance(scan_results, dict):
+
+                    self.bar_toe = scan_results.get("bar_toe", "N/A")
+                    self.bar_camber = scan_results.get("bar_camber", "N/A")
+                    self.spindle_toe = scan_results.get("spindle_toe", "N/A")
+                    self.spindle_camber = scan_results.get("spindle_toe", "N/A")
                     self.toe = scan_results.get("toe", "N/A")
                     self.camber = scan_results.get("camber", "N/A")
                     self.total_angle = scan_results.get("total_misalign", "N/A")
@@ -529,11 +534,11 @@ class Dexter_Capstone_UI:
 
     def show_repeated_arm_results(self):
         def content(frame):
-            try:
-                self.print_arm_results()
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to save or print results: {e}")
-            ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
+            # try:
+            #     self.print_arm_results()
+            # except Exception as e:
+            #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
+            # ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
             results = (f'Average Toe:\t{self.toe_avg:.4f}°\nAverage Camber:\t{self.camber_avg:.4f}°')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
@@ -561,13 +566,21 @@ class Dexter_Capstone_UI:
 
     def save_repeated_arm_results(self, scan_text):
         df = pd.read_csv(self.arm_database_path, dtype=str)
-        df.loc[df["Arm ID"] == scan_text, ["Bar Toe", "Bar Camber",
+        df.loc[df["Arm ID"] == f'{scan_text} avg', ["Bar Toe", "Bar Camber",
                                             "Spindle Toe", "Spindle Camber",
                                             "Toe", "Camber",
                                             "Total Relative Angle", "Date Scanned"]] = [self.bar_toe, self.bar_camber,
                                                                                             self.spindle_toe, self.spindle_camber,
                                                                                             self.toe, self.camber,
                                                                                             self.total_angle, date.today()]
+        df.to_csv(self.arm_database_path, index=False)
+        self.update_status(f"Scan results saved for Arm ID {scan_text}")
+
+    def save_repeated_arm_avg_results(self, scan_text):
+        df = pd.read_csv(self.arm_database_path, dtype=str)
+        df.loc[df["Arm ID"] == scan_text, ["Toe", "Camber",
+                                            "Total Relative Angle", "Date Scanned"]] = [self.toe_avg, self.camber_avg,
+                                                                                            self.total_angle_avg, date.today()]
         df.to_csv(self.arm_database_path, index=False)
         self.update_status(f"Scan results saved for Arm ID {scan_text}")
 
