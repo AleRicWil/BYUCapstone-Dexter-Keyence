@@ -138,11 +138,9 @@ class Dexter_Capstone_UI:
             self.setup_screen("TorFlex Axle — Measure Arm Alignment", content, home_button=False)
         self.master.update()
 
-        self.total_scans = self.scan_count
-
-        self.toe_sum = 0
-        self.camber_sum = 0
-        self.total_angle_sum = 0
+        self.toe_arr = np.empty(0)
+        self.camber_arr = np.emtpy(0)
+        self.total_angle_arr = np.empty(0)
 
         for index in range(self.scan_count):
             data = PS.perform_scan().astype(float)
@@ -487,10 +485,9 @@ class Dexter_Capstone_UI:
                     self.camber = scan_results.get("camber", "N/A")
                     self.total_angle = scan_results.get("total_misalign", "N/A")
 
-                    self.toe_sum += self.toe
-                    self.camber_sum += self.camber
-
-                    self.total_angle_sum += self.total_angle
+                    np.append(self.toe_arr, self.toe)
+                    np.append(self.camber_arr, self.camber)
+                    np.append(self.total_angle_arr, self.total_angle)
 
                     if (self.index + 1 >= self.scan_count):
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
@@ -541,15 +538,19 @@ class Dexter_Capstone_UI:
             #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Average Toe:\t{self.toe_avg:.4f}°\nAverage Camber:\t{self.camber_avg:.4f}°\nAverage Total Angle:\t{self.total_angle_avg:.4f}°')
-            ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
+            results = (f'Average Toe:\t{self.toe_avg:.4f}° ± {self.toe_std:.4f}\nAverage Camber:\t{self.camber_avg:.4f} ± {self.camber_std:.4f}°\nAverage Total Angle:\t{self.total_angle_avg:.4f}° ± {self.total_angle_std:.4f}')
+            ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="center", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
             ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
             self.master.bind("<Return>", lambda event: self.measure_arm())
 
-        self.toe_avg = self.toe_sum / self.total_scans
-        self.camber_avg = self.camber_sum / self.total_scans
-        self.total_angle_avg = self.total_angle_sum / self.total_scans
+        self.toe_avg = np.mean(self.toe_arr)
+        self.camber_avg = np.mean(self.camber_arr)
+        self.total_angle_avg = np.mean(self.total_angle_arr)
+
+        self.toe_std = np.std(self.toe_arr)
+        self.camber_std = np.std(self.camber_arr)
+        self.total_angle_std = np.std(self.camber_arr)
 
         self.master.after(0, self.save_repeated_arm_avg_results)
         self.setup_screen("Results", content)
