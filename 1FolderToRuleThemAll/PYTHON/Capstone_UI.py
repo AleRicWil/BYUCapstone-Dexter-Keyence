@@ -493,6 +493,7 @@ class Dexter_Capstone_UI:
 
                     if (self.index + 1 >= self.scan_count):
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
+                        self.master.after(0, self.save_repeated_arm_avg_results, scan_text)
                         self.master.after(0, self.show_repeated_arm_results)
                     else:
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
@@ -538,7 +539,7 @@ class Dexter_Capstone_UI:
             #     self.print_arm_results()
             # except Exception as e:
             #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
-            # ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
+            ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
             results = (f'Average Toe:\t{self.toe_avg:.4f}°\nAverage Camber:\t{self.camber_avg:.4f}°')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
