@@ -138,9 +138,9 @@ class Dexter_Capstone_UI:
             self.setup_screen("TorFlex Axle — Measure Arm Alignment", content, home_button=False)
         self.master.update()
 
-        self.toe_arr = np.empty(self.scan_count)
-        self.camber_arr = np.empty(self.scan_count)
-        self.total_angle_arr = np.empty(self.scan_count)
+        self.toe_arr = np.array([])
+        self.camber_arr = np.array([])
+        self.total_angle_arr = np.array([])
 
         for index in range(self.scan_count):
             data = PS.perform_scan().astype(float)
@@ -484,9 +484,9 @@ class Dexter_Capstone_UI:
                     self.camber = scan_results.get("camber", "N/A")
                     self.total_angle = scan_results.get("total_misalign", "N/A")
 
-                    np.append(self.toe_arr, self.toe)
-                    np.append(self.camber_arr, self.camber)
-                    np.append(self.total_angle_arr, self.total_angle)
+                    self.toe_arr = np.append(self.toe_arr, self.toe)
+                    self.camber_arr = np.append(self.camber_arr, self.camber)
+                    self.total_angle_arr = np.append(self.total_angle_arr, self.total_angle)
 
                     if (self.index + 1 >= self.scan_count):
                         self.master.after(0, self.save_repeated_arm_results, scan_text)
