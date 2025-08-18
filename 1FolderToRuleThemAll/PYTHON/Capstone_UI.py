@@ -330,6 +330,9 @@ class Dexter_Capstone_UI:
     def update_auto_mode(self):
         self.auto_flag = self.auto_mode_switch.get() == 0
 
+    def update_debug_mode(self):
+        self.debug_flag = self.debug_mode_switch.get() != 0
+
     def calc_hub_alignment(self):
         def content(frame):
             ctk.CTkLabel(frame, text='Calculating hub alignment...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
@@ -409,23 +412,33 @@ class Dexter_Capstone_UI:
         def content(frame):
             ctk.CTkLabel(frame, text=f"Arm ID: {self.arm_id}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
             # ctk.CTkLabel(frame, text=f"Last calibrated: {self.calibration_date}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
+
             ctk.CTkButton(frame, text="Start Scanner", command=self.run_scanner, width=200).pack(pady=(40, 0))
             repeated_frame = ctk.CTkFrame(frame)
             repeated_frame.pack(pady=(40, 0))
+
             ctk.CTkButton(repeated_frame, text="Repeated Scan", command=self.validate_number, width=200).pack(side=ctk.LEFT, padx=(0, 10))
             self.num_scans = ctk.CTkEntry(repeated_frame, placeholder_text="enter number of scans", width=300)
             self.num_scans.pack(side=ctk.LEFT)
             scan_frame = ctk.CTkFrame(frame)
             scan_frame.pack(pady=(40, 0))
+
             ctk.CTkButton(scan_frame, text="Measure from existing scan:", command=self.validate_file_and_start, width=200).pack(side=ctk.LEFT, padx=(0, 10))
             self.existing_scan_entry = ctk.CTkEntry(scan_frame, placeholder_text="enter scan file path", width=300)
             self.existing_scan_entry.pack(side=ctk.LEFT)
             mode_frame = ctk.CTkFrame(frame)
             mode_frame.pack(pady=(20, 0))
-            ctk.CTkLabel(mode_frame, text="Manual Mode:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))
-            self.auto_mode_switch = ctk.CTkSwitch(mode_frame, text="Auto/Manual", command=self.update_auto_mode)
-            self.auto_mode_switch.pack(side=ctk.LEFT)
-            self.auto_flag = self.auto_mode_switch.get() == 0
+
+            ctk.CTkLabel(mode_frame, text="Debug Mode:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))
+            self.debug_mode_switch = ctk.CTkSwitch(mode_frame, text="", command=self.update_debug_mode)
+            self.debug_mode_switch.pack(side=ctk.LEFT)
+            self.debug_flag = self.debug_mode_switch.get() != 0
+
+            # ctk.CTkLabel(mode_frame, text="Manual Mode:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))
+            # self.auto_mode_switch = ctk.CTkSwitch(mode_frame, text="Auto/Manual", command=self.update_auto_mode)
+            # self.auto_mode_switch.pack(side=ctk.LEFT)
+            # self.auto_flag = self.auto_mode_switch.get() == 0
+
             ctk.CTkButton(frame, text="Back", command=self.measure_arm, width=200).pack(pady=(40, 0))
             self.master.bind("<Return>", lambda event: self.run_scanner())
         self.setup_screen("TorFlex Axle — Measure Crank Arm Alignment", content)
@@ -439,7 +452,7 @@ class Dexter_Capstone_UI:
         def compute_alignment():
             try:
                 # self.get_arm_calibration()
-                scan_results = MA.main(self.arm_scan_fileA, self.auto_flag, self.scan_type, ui=self)
+                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, ui=self, debug_flag=self.debug_flag)
                 # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 if isinstance(scan_results, dict) and isinstance(scan_results, dict):
 
@@ -472,7 +485,7 @@ class Dexter_Capstone_UI:
         def compute_alignment():
             try:
                 # self.get_arm_calibration()
-                scan_results = MA.main(self.arm_scan_fileA, self.auto_flag, self.scan_type, ui=self)
+                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, ui=self)
                 # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 if isinstance(scan_results, dict) and isinstance(scan_results, dict):
 
