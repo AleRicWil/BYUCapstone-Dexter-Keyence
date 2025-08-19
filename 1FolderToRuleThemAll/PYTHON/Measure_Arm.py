@@ -52,6 +52,6 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None, debug_flag=F
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\Validation\LeftTest.csv', scan_type='live', debug_flag=True)
+    main(filename=r'RealScans\Perfect Arm\Perfect_ArmA10.csv', scan_type='live', debug_flag=False)
     # main(filename=r'3D Simulation\SimScans\CrankArm22.5-right_0toe_-5cam..txt', scan_type='sim')
  
