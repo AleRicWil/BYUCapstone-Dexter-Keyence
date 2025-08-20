@@ -212,8 +212,8 @@ def Save_Scan(profiles, filename):
 
         # Extract x, y, and z data for the current profile and append to the respective arrays
         xVals.extend(valid_points[:, 0])
-        yVals.extend(valid_points[:, 2])
-        zVals.extend(valid_points[:, 1])
+        yVals.extend(valid_points[:, 1])
+        zVals.extend(valid_points[:, 2])
 
     # Convert to numpy arrays
     xVals = np.array(xVals)
@@ -237,7 +237,7 @@ if __name__ == '__main__':
     # p.show()
 
     # load in stl and orient axes
-    filename = r'STLs\Crank Arm Assembly 22.5-right_0toe_-5cam.STL'
+    filename = r'STLs\Crank Arm Assembly 22.5d-r_0toe_-0.5cam.STL'
     myMesh = pv.read(filename)
     myMesh.translate([-myMesh.center[0], -myMesh.center[1], -myMesh.center[2]])
     myMesh = myMesh.rotate_x(-90).rotate_y(0).rotate_z(0)  # 180, 0, 90 for axle stl
@@ -293,7 +293,7 @@ if __name__ == '__main__':
 
     for i in range(len(myScans)):
         Plot_Scan(myScans[i][0], myScans[i][1], plotNum=i, plotTrue=False)
-        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/CrankArm22.5-right_0toe_-5cam..txt')
+        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/CrankArm22.5d-r_0toe_-0.5cam.txt')
 
 
     print(f'Duration: {end_time-start_time:.3f}')

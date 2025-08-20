@@ -256,7 +256,7 @@ class Torsion_Arm_LJS640:
 
     def fit_bar_faces(self, cutOff=[-500, 500], plotNum=0, show=False):
         barCloud = Trim_Cloud(self.cloud, 'x', cutOff)
-        barCloud = Trim_Cloud(barCloud, 'z', [70, 500])   #70, 500
+        barCloud = Trim_Cloud(barCloud, 'z', [-500, 500])   #70, 500
         print('Showing bar cloud'); self.show_cloud(barCloud)
 
         # Find primary face
@@ -674,8 +674,8 @@ class Torsion_Arm_LJS640:
         # Compute z maximum and filter points within 10 of it
         z_values = self.cloud.T[mask, 2]  # Assuming z is the third column (index 2)
         z_max = np.max(z_values)
-        z_threshold = z_max - 20 #20
-        z_threshold_back = z_threshold - 45 #45
+        z_threshold = z_max# - 20 #20
+        z_threshold_back =-1000# z_threshold - 45 #45
         z_mask = (z_values <= z_threshold) & (z_values >= z_threshold_back)
         final_mask = mask.copy()
         final_mask[final_mask] = z_mask
@@ -1952,7 +1952,7 @@ class Torsion_Arm_LJS640:
 
         #region GROUP SLICES BY RADIUS AND SELECT GOOD POINTS
         self.group_panels_by_radius(radius_tolerance=0.10, max_radius=50)
-        print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
+        # print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
         # self.fit_axis_to_weighted_spindle_panels2(knn=80, view_normals=True)
 
         for panel in self.panel_groups:
@@ -2028,18 +2028,18 @@ class Torsion_Arm_LJS640:
             if show_flag:# and i < 10:
                 # self.show_cloud(points_bin.T)
                 theta = np.linspace(0, 2 * np.pi, 100)
-                x_circle = center_2d[0] + radius * np.cos(theta)
-                y_circle = center_2d[1] + radius * np.sin(theta)
-                plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
-                plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
-                plt.scatter(center_2d[0], center_2d[1])
-                plt.title(f"Projected Slice {i}. stddev: {stddev}")
-                plt.xlim(-maxC, maxC)
-                plt.ylim(-maxC, maxC)
-                plt.axis('equal')
-                plt.xlabel("u-axis")
-                plt.ylabel("v-axis")
-                plt.show()
+                # x_circle = center_2d[0] + radius * np.cos(theta)
+                # y_circle = center_2d[1] + radius * np.sin(theta)
+                # plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
+                # plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
+                # plt.scatter(center_2d[0], center_2d[1])
+                # plt.title(f"Projected Slice {i}. stddev: {stddev}")
+                # plt.xlim(-maxC, maxC)
+                # plt.ylim(-maxC, maxC)
+                # plt.axis('equal')
+                # plt.xlabel("u-axis")
+                # plt.ylabel("v-axis")
+                # plt.show()
         
         # Fit a line to 3D centers and compute standard deviation of distances to axis
         def fit_axis(centers, approx_axis):
@@ -2206,11 +2206,11 @@ class Torsion_Arm_LJS640:
         self.spindle_camber = camber if v_x >= 0 else -camber  # Positive v_x: positive camber
 
         if side == 'right':
-            self.spindle_align = np.array([self.spindle_toe, self.spindle_camber])
-            self.bar_align = np.array([self.bar_toe, self.bar_camber])
+            self.spindle_align = np.array([self.spindle_toe, -self.spindle_camber])
+            self.bar_align = np.array([self.bar_toe, -self.bar_camber])
         elif side == 'left':
-            self.spindle_align = np.array([-self.spindle_toe, -self.spindle_camber])
-            self.bar_align = np.array([-self.bar_toe, -self.bar_camber])
+            self.spindle_align = np.array([-self.spindle_toe, self.spindle_camber])
+            self.bar_align = np.array([-self.bar_toe, self.bar_camber])
     
         # Calculate spindle toe and camber relative to the bar
         # Normalize bar_axis to define local x-axis
@@ -2238,14 +2238,20 @@ class Torsion_Arm_LJS640:
             toe_relative = 90 - np.degrees(np.arccos(v_y_local / np.sqrt(v_x_local**2 + v_y_local**2)))
         else:
             toe_relative = 0
-        self.toe = toe_relative if v_x_local >= 0 else -toe_relative
-
+        
         # Compute relative camber angle (in local x-z plane)
         if v_x_local**2 + v_z_local**2 != 0:
             camber_relative = 90 - np.degrees(np.arccos(v_z_local / np.sqrt(v_x_local**2 + v_z_local**2)))
         else:
             camber_relative = 0
-        self.camber = camber_relative if v_x_local >= 0 else -camber_relative
+
+        if side == 'left':
+            self.toe = toe_relative if v_x_local >= 0 else -toe_relative
+            self.camber = camber_relative if v_x_local >= 0 else -camber_relative
+        elif side == 'right':
+            self.toe = -toe_relative if v_x_local >= 0 else toe_relative
+            self.camber = -camber_relative if v_x_local >= 0 else camber_relative
+
 
         # Total misalignment: angle between spindle and bar vectors
         spindle_norm = self.spindle_axis / np.linalg.norm(self.spindle_axis)
