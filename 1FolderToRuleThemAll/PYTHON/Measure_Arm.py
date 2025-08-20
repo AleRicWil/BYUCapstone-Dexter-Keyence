@@ -51,5 +51,5 @@ def main(filename=None, auto_flag=False, scan_type='live', ui=None):
     return results
 
 if __name__ == "__main__":
-    main(filename=r'3D Simulation\SimScans\CrankArm22.5d-r_5toe_0cam.txt', scan_type='sim')
+    main(filename=r'3D Simulation\SimScans\CrankArm22.5d-r_0.5toe_0cam.txt', scan_type='sim')
  
