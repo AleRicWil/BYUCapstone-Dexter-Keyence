@@ -2064,7 +2064,7 @@ class Torsion_Arm_LJS640:
             distances = np.linalg.norm(centers - points_on_line, axis=1)
             stddev = np.std(distances)
             print(f'Centers stddev: {stddev:.3f}')
-            if stddev <= 0.028 or len(centers)/len(centers_orig) < 0.70:
+            if stddev <= 0.01 or len(centers)/len(centers_orig) < 0.70:
                 return centers
             # Compute IQR and bounds for outlier filtering
             q1, q3 = np.percentile(distances, [25, 75])
