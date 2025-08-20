@@ -2246,10 +2246,10 @@ class Torsion_Arm_LJS640:
             camber_relative = 0
 
         if side == 'left':
-            self.toe = toe_relative if v_x_local >= 0 else -toe_relative
+            self.toe = -toe_relative if v_x_local >= 0 else toe_relative
             self.camber = camber_relative if v_x_local >= 0 else -camber_relative
         elif side == 'right':
-            self.toe = -toe_relative if v_x_local >= 0 else toe_relative
+            self.toe = toe_relative if v_x_local >= 0 else -toe_relative
             self.camber = -camber_relative if v_x_local >= 0 else camber_relative
 
 
