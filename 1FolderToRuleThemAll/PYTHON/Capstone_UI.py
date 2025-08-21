@@ -499,7 +499,7 @@ class Dexter_Capstone_UI:
         def compute_alignment():
             try:
                 # self.get_arm_calibration()
-                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, ui=self)
+                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self)
                 # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 if isinstance(scan_results, dict) and isinstance(scan_results, dict):
 
