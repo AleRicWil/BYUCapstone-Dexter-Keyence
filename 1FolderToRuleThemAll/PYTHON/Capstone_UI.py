@@ -333,6 +333,12 @@ class Dexter_Capstone_UI:
     def update_debug_mode(self):
         self.debug_flag = self.debug_mode_switch.get() != 0
 
+    def update_side(self):
+        if self.side_switch.get() == 0:
+            self.side = 'left'
+        else:
+            self.side = 'right'
+
     def calc_hub_alignment(self):
         def content(frame):
             ctk.CTkLabel(frame, text='Calculating hub alignment...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
@@ -430,9 +436,17 @@ class Dexter_Capstone_UI:
             mode_frame.pack(pady=(20, 0))
 
             ctk.CTkLabel(mode_frame, text="Debug Mode:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))
-            self.debug_mode_switch = ctk.CTkSwitch(mode_frame, text="", command=self.update_debug_mode)
+            self.debug_mode_switch = ctk.CTkSwitch(mode_frame, text="Off/On", command=self.update_debug_mode)
             self.debug_mode_switch.pack(side=ctk.LEFT)
             self.debug_flag = self.debug_mode_switch.get() != 0
+
+            ctk.CTkLabel(mode_frame, text="Arm Side:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))
+            self.side_switch = ctk.CTkSwitch(mode_frame, text="Left/Right", command=self.update_side)
+            self.side_switch.pack(side=ctk.LEFT)
+            if self.side_switch.get() == 0:
+                self.side = 'left'
+            else:
+                self.side = 'right'
 
             # ctk.CTkLabel(mode_frame, text="Manual Mode:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))
             # self.auto_mode_switch = ctk.CTkSwitch(mode_frame, text="Auto/Manual", command=self.update_auto_mode)
@@ -452,7 +466,7 @@ class Dexter_Capstone_UI:
         def compute_alignment():
             try:
                 # self.get_arm_calibration()
-                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, ui=self, debug_flag=self.debug_flag)
+                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self, debug_flag=self.debug_flag)
                 # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
                 if isinstance(scan_results, dict) and isinstance(scan_results, dict):
 
