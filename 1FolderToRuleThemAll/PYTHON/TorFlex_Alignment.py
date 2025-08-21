@@ -178,7 +178,7 @@ class Axle_Hub_LJS640:
         self.hub_relative_angle = self.hub_angle - self.ref_angle
 
 class Torsion_Arm_LJS640:
-    def __init__(self, filename, view_angle_horizontal=0.0, scanType='real', cutOff=[-500,500,-500,500,-500,500], ui=None):
+    def __init__(self, filename, view_angle_horizontal=0.0, scan_type='real', side='right', cutOff=[-500,500,-500,500,-500,500], ui=None):
         self.filename = filename
         self.ui = ui
         self.closeLedges = 0.1
@@ -193,12 +193,14 @@ class Torsion_Arm_LJS640:
         self.reference_z_depth = 1116
         self.min_z_depth = 936
         self.exp_norm = Normal_of_Rotated_Plane(axis='x', angle=view_angle_horizontal)
+        self.side = side
+        self.scan_type = scan_type
         
-        if scanType == 'real' or scanType == 'live':
+        if scan_type == 'real' or scan_type == 'live':
             data = np.loadtxt(filename, delimiter=',', dtype=np.float64)
-            if scanType == 'real':
+            if scan_type == 'real':
                 z_scaling_factor = 1
-            elif scanType == 'live':
+            elif scan_type == 'live':
                 z_scaling_factor = 1
         
             self.numProfiles, self.numPoints = data.shape
@@ -208,7 +210,7 @@ class Torsion_Arm_LJS640:
             x = x.ravel()
             y = y.ravel()
             z = data.ravel() * z_scaling_factor
-            valid_mask = (z >= -500) & (z <= 500)
+            valid_mask = (z >= -1000) & (z <= 1000) # Don't load points out of scanner range (empty space)
             x = x[valid_mask]
             y = y[valid_mask]
             z = z[valid_mask]
@@ -226,7 +228,7 @@ class Torsion_Arm_LJS640:
             self.cloud = np.array([x, y, z])
             self.numPoints = self.cloud.shape[1]
         
-        elif scanType == 'sim':
+        elif scan_type == 'sim':
             data = np.loadtxt(filename, skiprows=1)
             self.numProfiles, self.numPoints = data.shape
             x = data[:,0]
@@ -236,29 +238,36 @@ class Torsion_Arm_LJS640:
             self.numPoints = self.cloud.shape[1]
 
     def downsample_cloud(self, maxPoints):
+        '''Load fewer points for processing by evenly sampling over xy grid'''
         if self.numPoints > maxPoints:
             sampled_indices = np.linspace(0, self.numPoints - 1, maxPoints, dtype=int)
             self.cloud = self.cloud[:, sampled_indices]
             self.numPoints = self.cloud.shape[1]
 
-    def center_cloud(self):
+    def center_cloud_xy(self):
+        '''Positions scan in center of xy plane. Does not adjust z values'''
         centroid_xy = [np.mean(self.cloud[0]), np.mean(self.cloud[1])]
         self.cloud = self.cloud - np.array([centroid_xy[0], centroid_xy[1], 0])[:, np.newaxis]
 
     def rotate_cloud(self, axis, angle):
+        '''Pure rotation of the cloud about the specified axis'''
         self.cloud = Rotate(self.cloud, axis, angle)
         
     def show_cloud(self, altCloud=0):
+        '''Shows cloud in separate window using PyVista with z value color gradient. If no cloud if provided, shows raw scan'''
         if isinstance(altCloud, int):
             Plot_Cloud_PyVista(self.cloud, pointSize=0.5)
         else:
             Plot_Cloud_PyVista(altCloud, pointSize=0.5)
 
-    def fit_bar_faces(self, cutOff=[-500, 500], plotNum=0, show=False):
-        barCloud = Trim_Cloud(self.cloud, 'x', cutOff)
-        barCloud = Trim_Cloud(barCloud, 'z', [70, 500])   #70, 500
-        if show:
-            print('Showing bar cloud'); self.show_cloud(barCloud)
+    def fit_bar_faces(self, cutoff=[-500, 500, -500, 500, -500, 500], plotNum=0, show=False, num_points=8000):
+        '''Fits a plane to each of the bar surfaces'''
+        barCloud = Trim_Cloud(self.cloud, 'x', [cutoff[0], cutoff[1]])
+        # print('Showing bar cloud'); self.show_cloud(barCloud)
+        barCloud = Trim_Cloud(barCloud, 'y', [cutoff[2], cutoff[3]])
+        # print('Showing bar cloud'); self.show_cloud(barCloud)
+        barCloud = Trim_Cloud(barCloud, 'z', [cutoff[4], cutoff[5]])   #70, 500
+        print('Showing bar cloud'); self.show_cloud(barCloud)
 
         # Find primary face
         barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)  #6
@@ -267,7 +276,7 @@ class Torsion_Arm_LJS640:
         # self.show_cloud(self.barPrimaryFace)
         self.barPrimaryFace = Clean_Bar_Face(self.barPrimaryFace, radius=self.barFaceRadius)
         # self.show_cloud(self.barPrimaryFace)
-        barPrimaryPlane, _, _ = Calc_Plane(self.barPrimaryFace, plotNum=plotNum, numPoints=self.anglePoints)
+        barPrimaryPlane, _, _ = Calc_Plane(self.barPrimaryFace, plotNum=plotNum, numPoints=num_points)
         barPrimaryNormal = barPrimaryPlane[0:3]
 
         # Find secondary face, which is perpendicular to primary
@@ -282,7 +291,7 @@ class Torsion_Arm_LJS640:
         # self.show_cloud(self.barSecondaryFace)
         self.barSecondaryFace = Clean_Bar_Face(self.barSecondaryFace, radius=self.barFaceRadius)
         # self.show_cloud(self.barSecondaryFace)
-        barSecondaryPlane, _, _ = Calc_Plane(self.barSecondaryFace, plotNum=plotNum*2, numPoints=self.anglePoints)
+        barSecondaryPlane, _, _ = Calc_Plane(self.barSecondaryFace, plotNum=plotNum*2, numPoints=num_points)
         barSecondaryNormal = barSecondaryPlane[0:3]
 
         # Bar's axis is the intersection of primary and secondary faces
@@ -293,7 +302,7 @@ class Torsion_Arm_LJS640:
         highest_y_idx = np.argmax(self.bar_faces[1])
         self.bar_faces_highest_point = self.bar_faces[:, highest_y_idx]
         if show:
-            self.show_cloud(np.hstack((self.barPrimaryFace, self.barSecondaryFace)))
+            print('Showing bar surfaces'); self.show_cloud(np.hstack((self.barPrimaryFace, self.barSecondaryFace)))
 
     def fit_spindle(self, axial_cutoff=-145, num_bins=20, circle_fit_tol=0.3, show=False, plot=False):
         '''
@@ -661,23 +670,34 @@ class Torsion_Arm_LJS640:
         v = np.cross(approx_axis, u)
         return u, v
 
-    def select_spindle_points(self, axial_cutoff, side, show_flag=False):
+    def select_spindle_points(self, axial_cutoff, show_flag=False):
         """Select points along the bar axis below the axial cutoff."""
         projection = np.dot(self.cloud.T, self.bar_axis)
-        if side == 'left':
+        if self.side == 'left':
             mask = (projection <= axial_cutoff)
-        elif side == 'right':
+        elif self.side == 'right':
             mask = (projection >= axial_cutoff)
 
         if show_flag:
-            self.show_cloud(self.cloud.T[mask, :].T)
+            print('Showing spindle cloud after axial filter'); self.show_cloud(self.cloud.T[mask, :].T)
 
-        # Compute z maximum and filter points within 10 of it
-        z_values = self.cloud.T[mask, 2]  # Assuming z is the third column (index 2)
+        # Compute z maximum and filter points according to it
+        y_values = self.cloud.T[mask, 1]
+        y_max = np.max(y_values)
+        z_values = self.cloud.T[mask, 2]  
         z_max = np.max(z_values)
-        z_threshold = z_max - 20 #20
-        z_threshold_back = z_threshold - 45 #45
-        z_mask = (z_values <= z_threshold) & (z_values >= z_threshold_back)
+
+        if self.scan_type == 'sim':
+            z_threshold_top = z_max + 1000
+            z_threshold_bottom = -1000
+            y_threshold_front = 1000
+        elif self.scan_type == 'live':
+            z_threshold_top = z_max - 25 #20
+            z_threshold_bottom = z_threshold_top - 70 #45
+            if self.side == 'right':
+                y_threshold_front = y_max - 25
+
+        z_mask = (z_values <= z_threshold_top) & (z_values >= z_threshold_bottom) & (y_values <= y_threshold_front)
         final_mask = mask.copy()
         final_mask[final_mask] = z_mask
         return self.cloud.T[final_mask, :]
@@ -1634,221 +1654,7 @@ class Torsion_Arm_LJS640:
         print(f'Fitting cylinder to final {panel.num_points} points')
         self.fit_cylinder_to_panel(panel)
 
-    def fit_spindle_3D(self, axial_cutoff=-150, show_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1):
-        """
-        Fits a 3D spindle by creating grids of decreasing panel sizes, keeping good fits.
-
-        Args:
-            axial_cutoff (float): Threshold along the bar axis to isolate spindle points.
-            show_flag (bool): If True, displays intermediate plots.
-            box_size (float): Initial panel size in mm.
-            min_size (float): Minimum panel size to stop subdivision.
-            overlap_factor (float): Factor to scale panel sizes for point inclusion.
-        """
-        #region ITERATIVE GRID SEARCH FOR LOW NOISE
-        # Store overlap_factor for use in create_grid
-        self.overlap_factor = overlap_factor
-        
-        # Setup coordinate system and project points
-        spindle_points = self.select_spindle_points(axial_cutoff)
-        self.spindle_cloud = spindle_points
-        # if show_flag:
-        #     self.show_cloud(spindle_points.T)
-        self.points_xy = self.project_to_xy(spindle_points)
-        
-        self.axis_xy = self.bar_axis[:2]
-        if np.linalg.norm(self.axis_xy) > 1e-6:
-            self.axis_xy = self.axis_xy / np.linalg.norm(self.axis_xy)
-        else:
-            self.axis_xy = np.array([1.0, 0.0])
-        self.tangential_xy = np.array([-self.axis_xy[1], self.axis_xy[0]])
-        
-        self.u_values = self.points_xy @ self.axis_xy
-        self.v_values = self.points_xy @ self.tangential_xy
-        self.u_lower, self.u_upper = np.min(self.u_values), np.max(self.u_values)
-        self.v_lower, self.v_upper = np.min(self.v_values), np.max(self.v_values)
-        
-        # Initialize with first grid
-        self.panels = self.create_grid(box_size, spindle_points)
-
-        print(f'Showing intial grid of size {box_size}')
-        # self.visualize_grid(panels=self.panels, panel_size=box_size)
-        
-        # Fit cylinders and establish stddev cutoff
-        for panel in self.panels:
-            self.fit_cylinder_to_panel(panel)
-        
-        stddevs = [panel.fit_params['stddev'] for panel in self.panels if panel.fit_params]
-        stddev_cutoff = np.percentile(stddevs, 12) if stddevs else float('inf')
-        
-        # Keep only good panels
-        self.panels = [panel for panel in self.panels  
-                    if panel.fit_params and 
-                    panel.fit_params['stddev'] <= stddev_cutoff and 
-                    panel.fit_params['colinearity'] >= 0.99]
-        
-        # Visualize initial good panels
-        # if show_flag:
-            # print('Showing panels with good fits')
-            # self.visualize_good_panels()
-        
-        # Iterative refinement
-        current_size = box_size / 2
-        while current_size >= min_size:
-            good_panels = self.panels.copy()
-            new_panels = self.create_grid(current_size, spindle_points)
-            # print(f'Showing new grid of size {current_size}')
-            # self.visualize_grid(panels=new_panels, panel_size=current_size)
-            
-            # Filter out panels whose centers are inside existing good panels
-            new_panels = [panel for panel in new_panels 
-                        if not self.is_inside_good_panel(panel, good_panels)]
-            # print(f'Showing filtered grid of size {current_size}')
-            # self.visualize_grid(panels=new_panels, panel_size=current_size)
-            
-            # Fit cylinders to new panels
-            for panel in new_panels:
-                self.fit_cylinder_to_panel(panel)
-            
-            # Keep good panels
-            new_good_panels = [panel for panel in new_panels 
-                            if panel.fit_params and 
-                            panel.fit_params['stddev'] <= stddev_cutoff and 
-                            panel.fit_params['colinearity'] >= 0.99]
-            
-            self.panels.extend(new_good_panels)
-            
-            # Visualize after each iteration
-            # if show_flag:
-            #     print(f'Showing good panels')
-                # self.visualize_good_panels()
-            
-            current_size /= 2
-        
-        # Final visualization
-        if show_flag:
-            print(f'Showing final {len(self.panels)} good panels')
-            self.visualize_good_panels()
-            # for i, panel in enumerate(self.panels):
-            #     print(i); self.plot_panel_fit(panel)
-        #endregion
-
-        #region FIT TO EACH DIAMETER
-        self.regions = []
-        self.group_panels_by_axial_location()
-        for group_idx, group in self.axial_groups.items():
-            # self.visualize_good_panels(group)
-            new_region = self.combine_panels_into_single_panel(group)
-            self.regions.append(new_region)
-            # self.visualize_good_panels(new_region)
-            self.fit_cylinder_to_panel(new_region)
-            # self.plot_panel_fit(new_region)
-            # print(new_region.fit_params['radius'])
-
-        self.raw_regions_points = []
-        self.raw_regions_panels =[]
-        for region in self.regions:
-            raw_points = self.get_all_raw_points_in_region(region, spindle_points)
-            self.raw_regions_points.append(raw_points)
-            region_panels = self.create_region_grid(raw_points, box_size/2, spindle_points)
-            self.raw_regions_panels.append(region_panels)
-            if show_flag:
-                self.visualize_grid(region_panels, box_size/2)
-            for panel in region_panels:
-                self.fit_cylinder_to_panel(panel)
-                #self.plot_panel_fit(panel)
-        self.weight_panels()
-        self.spindle_axis = self.fit_axis_to_weighted_spindle_panels()
-        # print('Combined regions of similar radius')
-        # self.combine_similar_regions()
-        # for region in self.regions:
-        #     self.fit_cylinder_to_panel(region)
-        #     self.visualize_good_panels(region)
-        #     self.plot_panel_fit(region)
-        #     print(region.fit_params['radius'])
-        #endregion
-
-    def fit_spindle_3D2(self, axial_cutoff=-150, side='left', show_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1):
-        """
-        Fits a 3D spindle by creating grids of decreasing panel sizes, keeping good fits.
-
-        Args:
-            axial_cutoff (float): Threshold along the bar axis to isolate spindle points.
-            show_flag (bool): If True, displays intermediate plots.
-            box_size (float): Initial panel size in mm.
-            min_size (float): Minimum panel size to stop subdivision.
-            overlap_factor (float): Factor to scale panel sizes for point inclusion.
-        """
-        #region ITERATIVE GRID SEARCH FOR LOW NOISE
-        # Store overlap_factor for use in create_grid
-        self.overlap_factor = overlap_factor
-        col_tol = 0.99
-        
-        # Setup coordinate system and project points
-        spindle_points = self.select_spindle_points(axial_cutoff, side)
-        self.spindle_cloud = spindle_points
-        # if show_flag:
-        #     print('Showing spindle'); self.show_cloud(spindle_points.T)
-        self.points_xy = self.project_to_xy(spindle_points)
-        
-        self.axis_xy = self.bar_axis[:2]
-        if np.linalg.norm(self.axis_xy) > 1e-6:
-            self.axis_xy = self.axis_xy / np.linalg.norm(self.axis_xy)
-        else:
-            self.axis_xy = np.array([1.0, 0.0])
-        self.tangential_xy = np.array([-self.axis_xy[1], self.axis_xy[0]])
-        
-        self.u_values = self.points_xy @ self.axis_xy
-        self.v_values = self.points_xy @ self.tangential_xy
-        self.u_lower, self.u_upper = np.min(self.u_values), np.max(self.u_values)
-        self.v_lower, self.v_upper = np.min(self.v_values), np.max(self.v_values)
-        
-        # Initialize with first grid
-        self.panels = self.create_grid(box_size, spindle_points)
-        # print(f'Showing intial grid of size {box_size}')
-        # self.visualize_grid(panels=self.panels, panel_size=box_size)
-        
-        # Fit cylinders and filter bad sections
-        for panel in self.panels:
-            self.fit_cylinder_to_panel(panel)
-
-        stddevs = [panel.fit_params['stddev'] for panel in self.panels if panel.fit_params]
-        stddev_cutoff = np.percentile(stddevs, 50) if stddevs else float('inf')
-        self.panels = [panel for panel in self.panels  
-                    if panel.fit_params and 
-                    panel.fit_params['stddev'] <= stddev_cutoff and 
-                    panel.fit_params['colinearity'] >= col_tol]
-        print(f'Showing initial good panels down to {box_size}mm')
-        self.visualize_good_panels()
-        # for panel in self.panels:
-        #     self.plot_panel_fit(panel)
-
-        good_panels = self.panels.copy()
-        new_panels = self.create_grid(box_size/2, spindle_points)
-        # print(f'Showing new grid of size {box_size/2}')
-        # self.visualize_grid(panels=new_panels, panel_size=box_size/2)
-        new_panels = [panel for panel in new_panels 
-                        if not self.is_inside_good_panel(panel, good_panels)]
-        # print(f'Showing filtered grid of size {box_size/2}')
-        # self.visualize_grid(panels=new_panels, panel_size=box_size/2)
-        for panel in new_panels:
-            self.fit_cylinder_to_panel(panel)
-        new_good_panels = [panel for panel in new_panels 
-                            if panel.fit_params and  
-                            panel.fit_params['colinearity'] >= col_tol]
-        self.panels.extend(new_good_panels)
-        print(f'Showing good panels down to {box_size/2}mm')
-        self.visualize_good_panels()
-        #endregion
-
-        #region FIT AXIS TO GOOD PANELS
-        for panel in self.panels:
-            panel.weight = 1.0
-
-        self.spindle_axis = self.fit_axis_to_weighted_spindle_panels2(); print('Fitting axis to all good panels')
-        #endregion
-
-    def fit_spindle_3D3(self, axial_cutoff=-150, side='left', show_flag=False, plot_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1, max_radius=50):
+    def fit_spindle_3D(self, axial_cutoff=-150, show_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1, max_radius=50):
         """
         Fits a 3D spindle by creating grids of decreasing panel sizes, keeping good fits.
 
@@ -1865,10 +1671,10 @@ class Torsion_Arm_LJS640:
         col_tol = 0.99  # 0.99
         
         # Setup coordinate system and project points
-        spindle_points = self.select_spindle_points(axial_cutoff, side, show_flag=show_flag)
+        spindle_points = self.select_spindle_points(axial_cutoff, show_flag=show_flag)
         self.spindle_cloud = spindle_points
         if show_flag:
-            print('Showing spindle'); self.show_cloud(spindle_points.T)
+            print('Showing spindle cloud after all filters'); self.show_cloud(spindle_points.T)
         self.points_xy = self.project_to_xy(spindle_points)
         
         self.axis_xy = self.bar_axis[:2]
@@ -1978,7 +1784,7 @@ class Torsion_Arm_LJS640:
         approx_axis = self.spindle_axis
         good_spindle_points = self.combine_panels_into_single_panel(self.panel_groups).points
         if show_flag:
-            self.show_cloud(good_spindle_points)
+            print('Showing filtered spindle points'); self.show_cloud(good_spindle_points)
         if abs(approx_axis[0]) < min(abs(approx_axis[1]), abs(approx_axis[2])):
             u = np.array([1, 0, 0])
         elif abs(approx_axis[1]) < abs(approx_axis[2]):
@@ -1990,7 +1796,7 @@ class Torsion_Arm_LJS640:
         v = np.cross(approx_axis, u)
 
         # Project spindle points onto bar axis and slice into bins
-        num_bins = 110
+        num_bins = 150
         min_points_per_bin = 30
         circle_fit_tol = 1.0
         t = np.dot(good_spindle_points.T, approx_axis)
@@ -2030,18 +1836,18 @@ class Torsion_Arm_LJS640:
             if plot_flag:# and i < 10:
                 # self.show_cloud(points_bin.T)
                 theta = np.linspace(0, 2 * np.pi, 100)
-                x_circle = center_2d[0] + radius * np.cos(theta)
-                y_circle = center_2d[1] + radius * np.sin(theta)
-                plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
-                plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
-                plt.scatter(center_2d[0], center_2d[1])
-                plt.title(f"Projected Slice {i}. stddev: {stddev}")
-                plt.xlim(-maxC, maxC)
-                plt.ylim(-maxC, maxC)
-                plt.axis('equal')
-                plt.xlabel("u-axis")
-                plt.ylabel("v-axis")
-                plt.show()
+                # x_circle = center_2d[0] + radius * np.cos(theta)
+                # y_circle = center_2d[1] + radius * np.sin(theta)
+                # plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
+                # plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
+                # plt.scatter(center_2d[0], center_2d[1])
+                # plt.title(f"Projected Slice {i}. stddev: {stddev}")
+                # plt.xlim(-maxC, maxC)
+                # plt.ylim(-maxC, maxC)
+                # plt.axis('equal')
+                # plt.xlabel("u-axis")
+                # plt.ylabel("v-axis")
+                # plt.show()
         
         # Fit a line to 3D centers and compute standard deviation of distances to axis
         def fit_axis(centers, approx_axis):
@@ -2066,7 +1872,11 @@ class Torsion_Arm_LJS640:
             distances = np.linalg.norm(centers - points_on_line, axis=1)
             stddev = np.std(distances)
             print(f'Centers stddev: {stddev:.3f}')
-            if stddev <= 0.028 or len(centers)/len(centers_orig) < 0.70:
+            if self.scan_type == 'sim':
+                tol = 0.01
+            elif self.scan_type == 'live':
+                tol = 0.025
+            if stddev <= tol or len(centers)/len(centers_orig) <= 0.75:
                 return centers
             # Compute IQR and bounds for outlier filtering
             q1, q3 = np.percentile(distances, [25, 75])
@@ -2188,7 +1998,7 @@ class Torsion_Arm_LJS640:
         Rx_deg, Ry_deg, Rz_deg = np.degrees(R)
         self.relative_angle = np.array([Rx_deg, Ry_deg, Rz_deg])
 
-    def calc_toe_camber(self, side):
+    def calc_toe_camber(self):
         # Bar axis calculations
         v_x, v_y, v_z = self.bar_axis
         # Toe angle: angle between y-axis and projection on x-y plane
@@ -2206,13 +2016,6 @@ class Torsion_Arm_LJS640:
         # Camber angle: angle between z-axis and projection on x-z plane
         camber = 90-np.degrees(np.arccos(v_z / np.sqrt(v_x**2 + v_z**2))) if v_x**2 + v_z**2 != 0 else 0
         self.spindle_camber = camber if v_x >= 0 else -camber  # Positive v_x: positive camber
-
-        if side == 'right':
-            self.spindle_align = np.array([self.spindle_toe, self.spindle_camber])
-            self.bar_align = np.array([self.bar_toe, self.bar_camber])
-        elif side == 'left':
-            self.spindle_align = np.array([-self.spindle_toe, -self.spindle_camber])
-            self.bar_align = np.array([-self.bar_toe, -self.bar_camber])
     
         # Calculate spindle toe and camber relative to the bar
         # Normalize bar_axis to define local x-axis
@@ -2240,14 +2043,24 @@ class Torsion_Arm_LJS640:
             toe_relative = 90 - np.degrees(np.arccos(v_y_local / np.sqrt(v_x_local**2 + v_y_local**2)))
         else:
             toe_relative = 0
-        self.toe = toe_relative if v_x_local >= 0 else -toe_relative
-
+        
         # Compute relative camber angle (in local x-z plane)
         if v_x_local**2 + v_z_local**2 != 0:
             camber_relative = 90 - np.degrees(np.arccos(v_z_local / np.sqrt(v_x_local**2 + v_z_local**2)))
         else:
             camber_relative = 0
-        self.camber = camber_relative if v_x_local >= 0 else -camber_relative
+
+        if self.side == 'left':
+            self.toe = -toe_relative if v_x_local >= 0 else toe_relative
+            self.camber = camber_relative if v_x_local >= 0 else -camber_relative
+            self.spindle_align = np.array([-self.spindle_toe, self.spindle_camber])
+            self.bar_align = np.array([-self.bar_toe, self.bar_camber])
+        elif self.side == 'right':
+            self.toe = toe_relative if v_x_local >= 0 else -toe_relative
+            self.camber = -camber_relative if v_x_local >= 0 else camber_relative
+            self.spindle_align = np.array([self.spindle_toe, -self.spindle_camber])
+            self.bar_align = np.array([self.bar_toe, -self.bar_camber])
+
 
         # Total misalignment: angle between spindle and bar vectors
         spindle_norm = self.spindle_axis / np.linalg.norm(self.spindle_axis)
@@ -2815,7 +2628,7 @@ def Cloud_Expected_Normal_Filter(cloud, expected_normal, angle_threshold=10, ui=
     else:
         print('Filtering by surface normals')
     pcd = Numpy_to_Open3D(cloud)
-    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=10))
+    pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30))
     normals = np.asarray(pcd.normals)
     cos_theta = np.dot(normals, expected_normal) / (np.linalg.norm(normals, axis=1) * np.linalg.norm(expected_normal))
     angles = np.degrees(np.arccos(np.clip(cos_theta, -1.0, 1.0)))
