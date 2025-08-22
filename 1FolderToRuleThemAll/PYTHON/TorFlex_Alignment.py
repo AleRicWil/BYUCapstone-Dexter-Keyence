@@ -267,7 +267,8 @@ class Torsion_Arm_LJS640:
         barCloud = Trim_Cloud(barCloud, 'y', [cutoff[2], cutoff[3]])
         # print('Showing bar cloud'); self.show_cloud(barCloud)
         barCloud = Trim_Cloud(barCloud, 'z', [cutoff[4], cutoff[5]])   #70, 500
-        print('Showing bar cloud'); self.show_cloud(barCloud)
+        if show:
+            print('Showing bar cloud'); self.show_cloud(barCloud)
 
         # Find primary face
         barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)  #6
@@ -696,6 +697,8 @@ class Torsion_Arm_LJS640:
             z_threshold_bottom = z_threshold_top - 70 #45
             if self.side == 'right':
                 y_threshold_front = y_max - 25
+            elif self.side == 'left':
+                y_threshold_front = y_max + 25
 
         z_mask = (z_values <= z_threshold_top) & (z_values >= z_threshold_bottom) & (y_values <= y_threshold_front)
         final_mask = mask.copy()
@@ -1654,7 +1657,7 @@ class Torsion_Arm_LJS640:
         print(f'Fitting cylinder to final {panel.num_points} points')
         self.fit_cylinder_to_panel(panel)
 
-    def fit_spindle_3D(self, axial_cutoff=-150, show_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1, max_radius=50):
+    def fit_spindle_3D(self, axial_cutoff=-150, show_flag=False, plot_flag=False, box_size=50.0, min_size=1.0, overlap_factor=1.1, max_radius=50):
         """
         Fits a 3D spindle by creating grids of decreasing panel sizes, keeping good fits.
 
@@ -1751,7 +1754,7 @@ class Torsion_Arm_LJS640:
         self.panels.extend(new_good_panels)
 
 
-        if show_flag:
+        if plot_flag:
             print(f'Showing good panels down to {box_size/3}mm'); self.visualize_good_panels()
         # for panel in self.panels:
         #     self.plot_panel_fit(panel)
@@ -1759,7 +1762,8 @@ class Torsion_Arm_LJS640:
 
         #region GROUP SLICES BY RADIUS AND SELECT GOOD POINTS
         self.group_panels_by_radius(radius_tolerance=0.10, max_radius=50)
-        # print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
+        if plot_flag:
+            print('Showing slices grouped by radius'); self.visualize_good_panels(self.panel_groups)
         # self.fit_axis_to_weighted_spindle_panels2(knn=80, view_normals=True)
 
         for panel in self.panel_groups:
@@ -1832,7 +1836,7 @@ class Torsion_Arm_LJS640:
                         centers.append(center_3d)
             except np.linalg.LinAlgError:
                 continue
-            if show_flag:# and i < 10:
+            if plot_flag:# and i < 10:
                 # self.show_cloud(points_bin.T)
                 theta = np.linspace(0, 2 * np.pi, 100)
                 # x_circle = center_2d[0] + radius * np.cos(theta)
@@ -1908,7 +1912,7 @@ class Torsion_Arm_LJS640:
         self.spindle_axis = axis_dir
         self.centers_std_dev = std_dev
 
-        if show_flag:
+        if plot_flag:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
 

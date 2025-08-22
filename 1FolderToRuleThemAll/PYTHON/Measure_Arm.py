@@ -2,7 +2,7 @@ import numpy as np
 from TorFlex_Alignment import Torsion_Arm_LJS640
 import time
 
-def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None):
+def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None, debug_flag=False):
     start = time.time()
     if filename == None:
         filename = r'C:\Users\Public\CapstoneUI\temporary_scan.csv'
@@ -13,7 +13,9 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
                                ui=None)
     
     # Prepare cloud so it is oriented as it would be on the axle on a trailer
-    print('Showing raw scan'); scan1.show_cloud()
+    if debug_flag:
+        print('Showing raw scan'); scan1.show_cloud(); 
+
     scan1.center_cloud_xy()
     if scan_type == 'sim':
         if side == 'right':
@@ -26,7 +28,8 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
             # scan1.rotate_cloud(axis='z', angle=180); scan1.rotate_cloud(axis='x', angle=90)
         if side == 'left':
             pass
-    print('Showing oriented scan'); scan1.show_cloud()
+    if debug_flag:
+        print('Showing oriented scan'); scan1.show_cloud()
 
     # Setup cutoffs for type of scan and type of arm
     if scan_type == 'sim':
@@ -38,15 +41,15 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
             axial_cutoff = -22
     elif scan_type == 'live':
         if side == 'right':
-            cutoff = [-5000, 0, -500, 500, -500, 500] 
-            axial_cutoff = 57
+            cutoff = [-5000, 0, -5000, 100, -5000, 5000] 
+            axial_cutoff = 150       # 57
         elif side == 'left':
-            cutoff = [-10, 5000, -5000, 100, -5000, 5000]
-            axial_cutoff = -50
+            cutoff = [0, 5000, -5000, 100, -5000, 5000]
+            axial_cutoff = -150      # -50
     
     # Fit axes to bar and spindle
-    scan1.fit_bar_faces(plotNum=0, cutoff=cutoff, show=True, num_points=2000) #; print(f'Bar Axis: {scan1.bar_axis}')
-    scan1.fit_spindle_3D(axial_cutoff=axial_cutoff, show_flag=True, box_size=8.0) #; print(f'Spindle Axis: {scan1.spindle_axis}')
+    scan1.fit_bar_faces(plotNum=0, cutoff=cutoff, show=debug_flag, num_points=2000) #; print(f'Bar Axis: {scan1.bar_axis}')
+    scan1.fit_spindle_3D(axial_cutoff=axial_cutoff, show_flag=debug_flag, plot_flag=False, box_size=8.0) #; print(f'Spindle Axis: {scan1.spindle_axis}')
     # scan1.visualize_axes(length=100)
 
     # Process axes direction vectors into toe and camber
@@ -68,5 +71,6 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\2D\2DA01.csv', side='right', scan_type='live')
+    main(filename=r'RealScans\Perfect Arm\Realignment10.csv', side='right', scan_type='live', debug_flag=False)
+    # main(filename=r'3D Simulation\SimScans\CrankArm22.5-right_0toe_-5cam..txt', scan_type='sim')
  
