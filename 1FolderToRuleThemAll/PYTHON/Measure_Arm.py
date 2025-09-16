@@ -20,13 +20,14 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
             scan1.rotate_cloud(axis='x', angle=90)
         elif side == 'left':
             scan1.rotate_cloud(axis='x', angle=90); scan1.rotate_cloud(axis='z', angle=180)
-    elif scan_type == 'live':
+    elif scan_type == 'live' or scan_type == 'real':
         if side == 'right':
             scan1.rotate_cloud(axis='z', angle=180); scan1.rotate_cloud(axis='x', angle=-90)
             # scan1.rotate_cloud(axis='z', angle=180); scan1.rotate_cloud(axis='x', angle=90)
         if side == 'left':
             pass
     print('Showing oriented scan'); scan1.show_cloud()
+    print(scan_type)
 
     # Setup cutoffs for type of scan and type of arm
     if scan_type == 'sim':
@@ -36,7 +37,7 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
         elif side == 'left':
             cutoff = [25, 1000, -1000, 1000, -1000, 1000]
             axial_cutoff = -22
-    elif scan_type == 'live':
+    elif scan_type == 'live' or scan_type == 'real':
         if side == 'right':
             cutoff = [-5000, 0, -500, 500, -500, 500] 
             axial_cutoff = 57
