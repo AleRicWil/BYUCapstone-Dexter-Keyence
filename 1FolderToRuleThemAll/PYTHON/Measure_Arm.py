@@ -13,8 +13,8 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
                                ui=None)
     
     # Prepare cloud so it is oriented as it would be on the axle on a trailer
-    # if debug_flag:
-    #     print('Showing raw scan'); scan1.show_cloud(); 
+    if debug_flag:
+        print('Showing raw scan'); scan1.show_cloud(); 
 
     scan1.center_cloud_xy()
     if scan_type == 'sim':
@@ -28,10 +28,9 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
             # scan1.rotate_cloud(axis='z', angle=180); scan1.rotate_cloud(axis='x', angle=90)
         if side == 'left':
             pass
-    print('Showing oriented scan'); scan1.show_cloud()
-    print(scan_type)
-    # if debug_flag:
-    #     print('Showing oriented scan'); scan1.show_cloud()
+   
+    if debug_flag:
+        print('Showing oriented scan'); scan1.show_cloud()
 
     # Setup cutoffs for type of scan and type of arm
     if scan_type == 'sim':
