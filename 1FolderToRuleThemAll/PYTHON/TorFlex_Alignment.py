@@ -260,15 +260,14 @@ class Torsion_Arm_LJS640:
         else:
             Plot_Cloud_PyVista(altCloud, pointSize=0.5)
 
-    def fit_bar_faces(self, cutoff=[-500, 500, -500, 500, -500, 500], plotNum=0, show=False, num_points=8000):
+    def fit_bar_faces(self, cutoff=[-500, 500, -500, 500, -500, 500], plotNum=0, show_flag=False, num_points=8000):
         '''Fits a plane to each of the bar surfaces'''
         barCloud = Trim_Cloud(self.cloud, 'x', [cutoff[0], cutoff[1]])
         # print('Showing bar cloud'); self.show_cloud(barCloud)
         barCloud = Trim_Cloud(barCloud, 'y', [cutoff[2], cutoff[3]])
         # print('Showing bar cloud'); self.show_cloud(barCloud)
         barCloud = Trim_Cloud(barCloud, 'z', [cutoff[4], cutoff[5]])   #70, 500
-        # if show:
-        #     print('Showing bar cloud'); self.show_cloud(barCloud)
+        if show_flag: print('Showing bar cloud'); self.show_cloud(barCloud)
 
         # Find primary face
         barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)  #6
@@ -276,12 +275,12 @@ class Torsion_Arm_LJS640:
         self.barPrimaryFace = Sort_Ledges(primaryLedges, primaryLedgeAvgs, sortType='size')[0][-1]
         # self.show_cloud(self.barPrimaryFace)
         self.barPrimaryFace = Clean_Bar_Face(self.barPrimaryFace, radius=self.barFaceRadius)
-        # self.show_cloud(self.barPrimaryFace)
+        if show_flag: print('Showing primary bar face'); self.show_cloud(self.barPrimaryFace)
         barPrimaryPlane, _, _ = Calc_Plane(self.barPrimaryFace, plotNum=plotNum, numPoints=num_points)
         barPrimaryNormal = barPrimaryPlane[0:3]
 
         # Find secondary face, which is perpendicular to primary
-        exp_secondary_norm = Rotate(barPrimaryNormal, axis='x', angle=90.0)
+        exp_secondary_norm = Rotate(barPrimaryNormal, axis='x', angle=-90.0)
         barSecondaryFaces = Cloud_Expected_Normal_Filter(barCloud, exp_secondary_norm, 3)   # 3
         secondaryLedges, secondaryLedgeAvgs = Find_Ledges_Along_Normal(barSecondaryFaces, normal=exp_secondary_norm, ledgeThreshold=self.ledgeThreshold, shortLedge=0.1, closeLedges=self.closeLedges)
         
@@ -291,7 +290,7 @@ class Torsion_Arm_LJS640:
         self.barSecondaryFace = Sort_Ledges(secondaryLedges, secondaryLedgeAvgs, sortType='size')[0][-1]
         # self.show_cloud(self.barSecondaryFace)
         self.barSecondaryFace = Clean_Bar_Face(self.barSecondaryFace, radius=self.barFaceRadius)
-        # self.show_cloud(self.barSecondaryFace)
+        if show_flag: print('Showing secondary bar face'); self.show_cloud(self.barSecondaryFace)
         barSecondaryPlane, _, _ = Calc_Plane(self.barSecondaryFace, plotNum=plotNum*2, numPoints=num_points)
         barSecondaryNormal = barSecondaryPlane[0:3]
 
@@ -302,7 +301,7 @@ class Torsion_Arm_LJS640:
         self.bar_faces = np.hstack((self.barPrimaryFace, self.barSecondaryFace))
         highest_y_idx = np.argmax(self.bar_faces[1])
         self.bar_faces_highest_point = self.bar_faces[:, highest_y_idx]
-        if show:
+        if show_flag:
             print('Showing bar surfaces'); self.show_cloud(np.hstack((self.barPrimaryFace, self.barSecondaryFace)))
 
     def fit_spindle(self, axial_cutoff=-145, num_bins=20, circle_fit_tol=0.3, show=False, plot=False):

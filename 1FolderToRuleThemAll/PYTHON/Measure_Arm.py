@@ -20,8 +20,10 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
     if scan_type == 'sim':
         if side == 'right':
             scan1.rotate_cloud(axis='x', angle=90)
+            scan1.rotate_cloud(axis='y', angle=0.3); scan1.rotate_cloud(axis='x', angle=0.3); scan1.rotate_cloud(axis='z', angle=0.3)
         elif side == 'left':
             scan1.rotate_cloud(axis='x', angle=90); scan1.rotate_cloud(axis='z', angle=180)
+            scan1.rotate_cloud(axis='y', angle=1.2); scan1.rotate_cloud(axis='x', angle=0.5); scan1.rotate_cloud(axis='z', angle=0.1)
     elif scan_type == 'live' or scan_type == 'real':
         if side == 'right':
             scan1.rotate_cloud(axis='z', angle=180); scan1.rotate_cloud(axis='x', angle=-90)
@@ -35,7 +37,7 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
     # Setup cutoffs for type of scan and type of arm
     if scan_type == 'sim':
         if side == 'right':
-            cutoff = [-1000, -25, -1000, 1000, -1000, 1000]  # x, y, z min & max
+            cutoff = [-1000, -26, -1000, 1000, -1000, 1000]  # x, y, z min & max
             axial_cutoff = 22   # cutoff along bar axis
         elif side == 'left':
             cutoff = [25, 1000, -1000, 1000, -1000, 1000]
@@ -49,7 +51,7 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
             axial_cutoff = -150      # -50
     
     # Fit axes to bar and spindle
-    scan1.fit_bar_faces(plotNum=0, cutoff=cutoff, show=debug_flag, num_points=8000) #; print(f'Bar Axis: {scan1.bar_axis}')
+    scan1.fit_bar_faces(plotNum=0, cutoff=cutoff, show_flag=debug_flag, num_points=8000) #; print(f'Bar Axis: {scan1.bar_axis}')
     scan1.fit_spindle_3D(axial_cutoff=axial_cutoff, show_flag=debug_flag, plot_flag=debug_flag, box_size=8.0) #; print(f'Spindle Axis: {scan1.spindle_axis}')
 
     # Process axes direction vectors into toe and camber
@@ -71,6 +73,6 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
     return results
 
 if __name__ == "__main__":
-    main(filename=r'RealScans\Perfect Arm\Perfect_ArmA10.csv', side='right', scan_type='live', debug_flag=True)
-
+    # main(filename=r'RealScans\Perfect Arm\Perfect_ArmA10.csv', side='right', scan_type='live', debug_flag=True)
+    main(filename=r'3D Simulation\SimScans\CrankArm22.5d-r_5toe_5cam.txt', side='right', scan_type='sim', debug_flag=True)
  
