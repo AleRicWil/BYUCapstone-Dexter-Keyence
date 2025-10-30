@@ -693,6 +693,7 @@ class Torsion_Arm_LJS640:
             z_threshold_top = z_max + 1000
             z_threshold_bottom = -1000
             y_threshold_front = 1000
+
         elif self.scan_type == 'live':
             z_threshold_top = z_max - 25 #20
             z_threshold_bottom = z_threshold_top - 70 #45
@@ -1677,8 +1678,8 @@ class Torsion_Arm_LJS640:
         # Setup coordinate system and project points
         spindle_points = self.select_spindle_points(axial_cutoff, show_flag=show_flag, spindle_cuts=spindle_cuts)
         self.spindle_cloud = spindle_points
-        # if show_flag:
-        #     print('Showing spindle cloud after all filters'); self.show_cloud(spindle_points.T)
+        if show_flag:
+            print('Showing spindle cloud after all filters'); self.show_cloud(spindle_points.T)
         self.points_xy = self.project_to_xy(spindle_points)
         
         self.axis_xy = self.bar_axis[:2]
@@ -2158,7 +2159,7 @@ class Torsion_Arm_LJS640:
         final_df = pd.concat([note_row, header_row, data_df, avg_df, std_df], ignore_index=True)
 
         # Save to CSV without adding an extra header
-        final_df.to_csv(csv_filename, index=False, float_format='%.6f', header=False)
+        # final_df.to_csv(csv_filename, index=False, float_format='%.6f', header=False)
 
     def plot_vectors(self):
         fig = plt.figure()

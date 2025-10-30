@@ -43,7 +43,7 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
     elif scan_type == 'live' or scan_type == 'real':
         if side == 'right':
             cutoff = [-5000, 0, -5000, 150, -5000, 5000] 
-            axial_cutoff = 135      # 57
+            axial_cutoff = 136      # 57
         elif side == 'left':
             cutoff = [0, 5000, -5000, 100, -5000, 5000]
             axial_cutoff = -150      # -50
