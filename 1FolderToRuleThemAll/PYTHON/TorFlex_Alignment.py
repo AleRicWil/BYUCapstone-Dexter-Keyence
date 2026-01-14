@@ -697,7 +697,7 @@ class Torsion_Arm_LJS640:
             z_threshold_top = z_max - 25 #20
             z_threshold_bottom = z_threshold_top - 70 #45
             if self.side == 'right':
-                y_threshold_front = y_max - 25
+                y_threshold_front = y_max - 25      # 25
             elif self.side == 'left':
                 y_threshold_front = y_max + 25
 

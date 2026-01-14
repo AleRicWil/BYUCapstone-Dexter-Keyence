@@ -45,13 +45,13 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
     elif scan_type == 'live' or scan_type == 'real':
         if side == 'right':
             cutoff = [-5000, 0, -5000, 150, -5000, 5000] 
-            axial_cutoff = 136      # 57
+            axial_cutoff = 100      # 57
         elif side == 'left':
             cutoff = [0, 5000, -5000, 100, -5000, 5000]
             axial_cutoff = -150      # -50
     
     # Fit axes to bar and spindle
-    scan1.fit_bar_faces(plotNum=0, cutoff=cutoff, show_flag=debug_flag, num_points=8000) #; print(f'Bar Axis: {scan1.bar_axis}')
+    scan1.fit_bar_faces(plotNum=0, cutoff=cutoff, show_flag=debug_flag, num_points=1000) #; print(f'Bar Axis: {scan1.bar_axis}')
     scan1.fit_spindle_3D(axial_cutoff=axial_cutoff, show_flag=debug_flag, plot_flag=debug_flag, box_size=8.0) #; print(f'Spindle Axis: {scan1.spindle_axis}')
 
     # Process axes direction vectors into toe and camber
@@ -74,5 +74,5 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
 
 if __name__ == "__main__":
     # main(filename=r'RealScans\Perfect Arm\Perfect_ArmA10.csv', side='right', scan_type='live', debug_flag=True)
-    main(filename=r'3D Simulation\SimScans\CrankArm22.5d-r_5toe_5cam.txt', side='right', scan_type='sim', debug_flag=True)
+    main(filename=r'RealScans\Perfect Arm\Perfect_Arm01.csv', side='right', scan_type='live', debug_flag=True)
  
