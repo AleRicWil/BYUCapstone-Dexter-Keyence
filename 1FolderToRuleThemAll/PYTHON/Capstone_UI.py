@@ -121,7 +121,7 @@ class Dexter_Capstone_UI:
             self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}.csv'
         np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
         
-        self.scan_type = 'live'
+        self.scan_type = 'real'
         if self.type == 'hub':
             self.hub_scan_fileA = self.temp_scan_pathA
             self.calc_hub_alignment()
@@ -174,7 +174,7 @@ class Dexter_Capstone_UI:
             else:
                 scan_text = f'{self.arm_id}{self.index + 1}' 
 
-            self.scan_type = 'live'
+            self.scan_type = 'real'
             if self.type == 'hub':
                 self.hub_scan_fileA = self.temp_scan_pathA
                 self.calc_hub_alignment()
@@ -667,7 +667,7 @@ class Dexter_Capstone_UI:
             i = (i - 2**15) * .0102
         np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
         self.hub_scan_fileA = self.temp_scan_pathA
-        self.scan_type = 'live'
+        self.scan_type = 'real'
         self.calc_calibration()
 
     def calc_calibration(self):

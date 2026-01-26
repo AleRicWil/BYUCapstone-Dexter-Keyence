@@ -1,264 +1,175 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import pyvista as pv
-import open3d as o3d
+# Standard library imports
+import os
+import time
 from copy import deepcopy
 from functools import reduce
-import time
+
+# Third-party imports
+import matplotlib.pyplot as plt
+import numpy as np
+import open3d as o3d
+import pandas as pd
+import pyvista as pv
 from scipy.linalg import eigh
 
-class Axle_Hub_LJS640:  
-    def __init__(self, filename, view_angle_horizontal=0.0, scanType='real', cutOff=[-500, 500], ui=None):
-        self.ui = ui
-        self.minPoints = 10000
-        self.anglePoints = 2000
-        self.norm_tolerance_deg = 10.0
-        self.dist_tolerange_mm = 15.0
-        self.max_x_width = 640
-        self.min_x_width = 579
-        self.reference_z_depth = 1116
-        self.min_z_depth = 936
-        self.exp_norm = Normal_of_Rotated_Plane(axis='y', angle=view_angle_horizontal)
+# global variables
+NO_LIMIT = 2000 # units: mm. bounding box face default value to not trim. max possible scanner value is 1136
+
+
+class Crank_Arm_ASSY_LJS640:
+    '''
+    This class holds functionality for processing scans of Dexter TorFlex Crank-Arm Assemblies.
+    The scans are done by the KEYENCE LJ-S640 3D laser scanner.
+    It's specs are hard-coded in the __init__(). This function is automatically run when the object is initialized.
+    The scan data is a raw CSV file, captured directly from the scanner head, not through the controller box. 
+    Each 'cell' represents a pixel's z-distance from the scanner.
+    Following convention, this class's member functions are sorted into public() and _private().
+    public() functions may be called from outside the class (e.g in Measure_Arm.py).
+    _private() functions are meant to be called only within the class, but are not technically hidden.
+    '''
+    
+    def __init__(self, filename, inner_bar_view_angle_x=0.0, scan_type='real', side='right', 
+                 bbox=[-NO_LIMIT,NO_LIMIT,-NO_LIMIT,NO_LIMIT,-NO_LIMIT,NO_LIMIT], ui=None, debug_flag=False):
+        '''
+        initializer for Crank_Arm_ASSY_LJS640 objects. automatically runs when initializing object
         
-        if scanType == 'real' or scanType == 'live':
-            data = np.loadtxt(filename, delimiter=',', dtype=np.float64)
-            if scanType == 'real':
-                z_scaling_factor = 1
-            elif scanType == 'live':
-                z_scaling_factor = 1
-           
-            self.numProfiles, self.numPoints = data.shape
-            profile_indices = np.arange(self.numProfiles) - self.numProfiles / 2
-            point_indices = (np.arange(self.numPoints) - self.numPoints / 2) * 0.2
-            x, y = np.meshgrid(profile_indices, point_indices, indexing='ij')
-            x = x.ravel()
-            y = y.ravel()
-            z = data.ravel() * z_scaling_factor
-            valid_mask = (z >= -500) & (z <= 500)
-            x = x[valid_mask]
-            y = y[valid_mask]
-            z = z[valid_mask]
-
-            xScaleSlope = ((self.min_x_width - self.max_x_width) / self.numPoints) / \
-                          (self.reference_z_depth - self.min_z_depth)
-            scale_factors = np.where(z <= 0, 0.2, 0.2 + xScaleSlope*z)
-            x *= scale_factors
-
-            valid_mask = (x > -1000) & (x < 1000) & (z >= cutOff[0]) & (z <= cutOff[1])
-            x = x[valid_mask]
-            y = y[valid_mask]
-            z = z[valid_mask]
-
-            self.cloud = np.array([y, -x, z])
-            self.numPoints = self.cloud.shape[1]
-        elif scanType == 'sim':
-            data = np.loadtxt(filename, skiprows=1)
-            self.numProfiles, self.numPoints = data.shape
-            x = data[:,0]
-            y = data[:,1]
-            z = data[:,2]
-            self.cloud = np.array([x, y, z])
-            self.numPoints = self.cloud.shape[1]
+        :param self: this object's own identifier for storing its attributes and data
+        :param filename: path for scan CSV location to process
+        :param inner_bar_view_angle_x: angle (degrees about scanner's X axis) the inner bar's face is expected to be
+        :param scan_type: 'real', 'sim'. simulated scans from ray-traced STL files of models. they use different scaling
+        :param side: 'left', 'right'. side of the trailer the assembly is to be installed. if not distinguished, 
+        use default 'right' for consistency.
+        :param cutOff: list of 6 floats (units: millimeter). these define the initial bounding box for trimming the raw 
+        scan. this box should remove everything that is not the crank arm assembly while not removing any part of the 
+        crank arm assembly. default values do not remove anything, exceeding scanner field of view.
+        :param ui: optional user-interface object to attach print() console outputs, etc.
+        :param debug_flag: used to display debug steps or not
+        '''
         
-    def downsample_cloud(self, maxPoints):
-        if self.numPoints > maxPoints:
-            sampled_indices = np.linspace(0, self.numPoints - 1, maxPoints, dtype=int)
-            self.cloud = self.cloud[:, sampled_indices]
-            self.numPoints = self.cloud.shape[1]
+        # KEYENCE LJ-S640 field of view (FOV) parameters from datasheet. all units: mm
 
-    def trim_cloud_z(self, cutOff=[-500, 500]):
-        valid_mask = (self.cloud[2] >= cutOff[0]) & (self.cloud[2] <= cutOff[1])
-        myCloud = self.cloud[:, valid_mask]
-        if myCloud.shape[1] >= self.minPoints:
-            self.cloud = myCloud
-            self.numPoints = self.cloud.shape[1]
-        else:    
-            if self.ui:
-                self.ui.log_message(f'Trimming Error: Less than {self.minPoints} points in trimmed cloud. Returning untrimmed cloud')
-            else:
-                print(f'Trimming Error: Less than {self.minPoints} points in trimmed cloud. Returning untrimmed cloud')
-        
-    def show_cloud(self, altCloud=0):
-        if isinstance(altCloud, int):
-            Plot_Cloud_PyVista(self.cloud, pointSize=0.5, ui=self.ui)
-        else:
-            Plot_Cloud_PyVista(altCloud, pointSize=0.5, ui=self.ui)
+        self.near_x_width = 579
+        self.reference_x_width = 640
+        self.far_x_width = 640
+        self.y_length = 640
+        self.near_z_limit = 936
+        self.reference_z = 1116
+        self.far_z_limit = 1366
 
-    def align_z(self, auto=True):
-        myCloud, R_matrix = Broadface_to_Z(self.cloud, self.exp_norm, self.norm_tolerance_deg, ui=self.ui)
-        self.cloud = myCloud
-        if auto == False:
-            if self.ui:
-                self.ui.log_message('Showing rotated cloud')
-            else:
-                print('Showing rotated cloud')
-            for row in R_matrix:
-                if self.ui:
-                    self.ui.log_message(' '.join(f'{elem:.6f}' for elem in row))
-                else:
-                    print(' '.join(f'{elem:.6f}' for elem in row))
-            self.show_cloud(myCloud)
-            ans = input('Keep cloud after this rotation: y/n')
-            if ans == 'n':
-                if self.ui:
-                    self.ui.log_message('Rejecting cloud. Terminating attempt')
-                else:
-                    print('Rejecting cloud. Terminating attempt')
-                self.cloud = np.nan
-        
-    def rotate(self, axis, angle):
-        angle = np.radians(angle)
-        if axis == 'x':
-            R = np.array([[1, 0, 0],
-                         [0, np.cos(angle), -np.sin(angle)],
-                         [0, np.sin(angle), np.cos(angle)]])    
-        elif axis == 'y':
-            R = np.array([[np.cos(angle), 0, np.sin(angle)],
-                         [0, 1, 0],
-                         [-np.sin(angle), 0, np.cos(angle)]])
-        elif axis == 'z':
-            R = np.array([[np.cos(angle), -np.sin(angle), 0],
-                         [np.sin(angle), np.cos(angle), 0],
-                         [0, 0, 1]])
-        else:
-            raise ValueError("Axis must be 'x', 'y', or 'z'.")
-        self.cloud = np.dot(R, np.array(self.cloud))
+        # KEYENCE LJ-S640 scaling parameters from empirical testing. convert pixel or value in CSV to mm
 
-    def sort_ledges(self):
-        self.cloud = Cloud_Expected_Normal_Filter(self.cloud, self.exp_norm, angle_threshold=self.norm_tolerance_deg, ui=self.ui)
-        myLedges, myLedgeAvgs = Find_Ledges_Along_Normal(self.cloud, normal=[0, 0, 1], ledgeThreshold=2.0, shortLedge=0.01, closeLedges=4.5, ui=self.ui)
-        self.sorted_ledges, self.sorted_ledge_avgs = Sort_Ledges(myLedges, myLedgeAvgs)
+        x_base_scale = 0.2 # number of pixels along x (rows) converted to mm. not constant across FOV (?)
+        y_scale = 0.2 #  number of pixels along y (columns) converted to mm
+        z_scale = -1.0 # 1.0 means CSV value is already in mm
 
-    def calc_ref_angle(self, index=0, plotNum=0):
-        self.ref_ledge = self.sorted_ledges[index]
-        self.ref_plane, self.ref_angle, _ = Calc_Plane(self.ref_ledge, numPoints=self.anglePoints, plotNum=plotNum, ui=self.ui)
+        # store passed-in parameters to self
 
-    def calc_hub_angle(self, index=None, auto=True, plotNum=0, deleteGround=False):
-        if index != None:
-            self.hub_plane, self.hub_angle, _ = Calc_Plane(self.sorted_ledges[index], numPoints=self.anglePoints, plotNum=plotNum, ui=self.ui)
-        else:
-            self.hub_ledge, self.hub_avg = Find_HubFace(self.sorted_ledges, self.sorted_ledge_avgs, deleteGround=deleteGround, ui=self.ui)
-            
-            if auto == True:
-                self.hub_plane, self.hub_angle, _ = Calc_Plane(self.hub_ledge, numPoints=self.anglePoints, plotNum=plotNum, ui=self.ui)
-            
-            elif auto == False:
-                ans = 'No'
-                while ans != 'Yes':
-                    self.show_cloud(self.hub_ledge)
-                    ans = self.ui.get_input(message='Is this the hub face?')
-                    if ans == 'Yes':
-                        break
-                    if self.hub_avg in self.sorted_ledge_avgs:
-                        current_index = self.sorted_ledge_avgs.index(self.hub_avg)
-                    else:
-                        if self.ui:
-                            self.ui.log_message("Error: Hub average not found in sorted ledge averages.")
-                        else:
-                            print("Error: Hub average not found in sorted ledge averages.")
-                        return
-                    
-                    ans2 = self.ui.get_input(message='Move to next ledge up or down?', options=["Up", "Down"])
-                    while ans2 not in ('Up', 'Down'):
-                        ans2 = input('Input not allowed. Move to ledge up or down: u/d ')
-                    if ans2 == 'Up' and current_index < len(self.sorted_ledges) - 1:
-                        current_index += 1
-                    elif ans2 == 'Down' and current_index > 0:
-                        current_index -= 1
-                    else:
-                        if self.ui:
-                            self.ui.log_message("Cannot move further in that direction.")
-                        else:
-                            print("Cannot move further in that direction.")
-                    self.hub_ledge = self.sorted_ledges[current_index]
-                    self.hub_avg = self.sorted_ledge_avgs[current_index]
-                self.hub_plane, self.hub_angle, _ = Calc_Plane(self.hub_ledge, numPoints=self.anglePoints, plotNum=plotNum, ui=self.ui)
-
-    def calc_hub_relative_angle(self):
-        self.hub_relative_angle = self.hub_angle - self.ref_angle
-
-class Torsion_Arm_LJS640:
-    def __init__(self, filename, view_angle_horizontal=0.0, scan_type='real', side='right', cutOff=[-500,500,-500,500,-500,500], ui=None):
         self.filename = filename
+        self.inner_bar_view_angle_x = inner_bar_view_angle_x
         self.ui = ui
-        self.closeLedges = 0.1
-        self.ledgeThreshold = 0.1
-        self.barFaceRadius = 120
-        self.minPoints = 10000
-        self.anglePoints = 8000
-        self.norm_tolerance_deg = 10.0
-        self.dist_tolerange_mm = 15.0
-        self.max_x_width = 640
-        self.min_x_width = 579
-        self.reference_z_depth = 1116
-        self.min_z_depth = 936
-        self.exp_norm = Normal_of_Rotated_Plane(axis='x', angle=view_angle_horizontal)
         self.side = side
         self.scan_type = scan_type
-        
-        if scan_type == 'real' or scan_type == 'live':
+
+        # parameters for inner-bar detection
+
+        # unit vector for expected 3D orientation of inner-bar's primary face
+        self.inner_bar_expected_normal = Normal_of_Rotated_Plane(axis='x', angle=self.inner_bar_view_angle_x)
+        self.norm_tolerance_deg = 6.0 # units: deg. +/- tolerance for filtering surfaces by 'inner_bar_view_angle_x'
+
+        # units: mm. distance threshold for triggering a new ledge when comparing 
+        # next-highest point to the ledge currently being built
+        self.ledge_threshold = 0.1 
+
+        # units: mm. distance threshold for combining parallel ledges that are 'the same ledge' after 
+        # creating all ledges (i.e. the points in these two ledges shouldn't have been separated)
+        self.close_ledges = 0.1
+
+        # units: mm. after the surface is selected, remove all points outside this XY 
+        # distance from the surface's horizontal centroid (oriented assembly's XY plane).
+        self.inner_bar_surface_radius = 120
+
+        # load in data from scan CSV
+
+        print(f'Loading scan from {filename}\n')        
+        if scan_type == 'real':
             data = np.loadtxt(filename, delimiter=',', dtype=np.float64)
-            if scan_type == 'real':
-                z_scaling_factor = 1
-            elif scan_type == 'live':
-                z_scaling_factor = 1
-        
-            self.numProfiles, self.numPoints = data.shape
-            profile_indices = np.arange(self.numProfiles) - self.numProfiles / 2
-            point_indices = (np.arange(self.numPoints) - self.numPoints / 2) * 0.2
-            x, y = np.meshgrid(profile_indices, point_indices, indexing='ij')
+            
+            # setup and populate pixel grid for z-values (in mm). x and y values are not in mm yet
+            self.num_rows, self.num_columns = data.shape
+            row_indices = np.arange(self.num_rows) - self.num_rows / 2
+            column_indices = (np.arange(self.num_columns) - self.num_columns / 2) * y_scale
+            x, y = np.meshgrid(row_indices, column_indices, indexing='ij')
             x = x.ravel()
             y = y.ravel()
-            z = data.ravel() * z_scaling_factor
-            valid_mask = (z >= -1000) & (z <= 1000) # Don't load points out of scanner range (empty space)
+            z = data.ravel()*z_scale + self.reference_z
+
+            # filter pixels by z-value to only include values inside scanner's FOV. for efficiency
+            valid_mask = (z >= self.near_z_limit) & (z <= self.far_z_limit)
             x = x[valid_mask]
             y = y[valid_mask]
             z = z[valid_mask]
 
-            xScaleSlope = ((self.min_x_width - self.max_x_width) / self.numPoints) / \
-                        (self.reference_z_depth - self.min_z_depth)
-            scale_factors = np.where(z <= 0, 0.2, 0.2 + xScaleSlope*z)
-            x *= scale_factors
+            # calculate x scale based on z-value and apply x and y scales
+            # rectangular prism beyond reference_z. oblique rectangular prism before reference_z (see datasheet)
+            num = (self.near_x_width - self.far_x_width) / self.num_columns
+            den = self.reference_z - self.near_z_limit
+            x_scale_slope = num / den
+            x_scale_factors = np.where(z >= self.reference_z, 
+                                       x_base_scale, 
+                                       x_base_scale + x_scale_slope*(z - self.reference_z))
+            x *= x_scale_factors
 
-            valid_mask = (x > cutOff[0]) & (x < cutOff[1]) & (y > cutOff[2]) & (y < cutOff[3]) & (z >= cutOff[4]) & (z <= cutOff[5])
+            # store and show raw, untrimmed scan if using debug mode
+            if debug_flag: 
+                self.cloud = np.array([x, y, z]); 
+                print('Showing raw scan. User verify crank-arm assembly positioning...'); self.show_cloud(z_flip=True)
+
+            # apply inital bounding box for 'raw_trim' and store to point cloud
+            valid_mask = (x >= bbox[0]) & (x <= bbox[1]) & \
+                         (y >= bbox[2]) & (y <= bbox[3]) & \
+                         (z >= bbox[4]) & (z <= bbox[5])
             x = x[valid_mask]
             y = y[valid_mask]
             z = z[valid_mask]
-
             self.cloud = np.array([x, y, z])
-            self.numPoints = self.cloud.shape[1]
+
+            if debug_flag: print('Showing trimmed raw scan. User verify initial trim...'); self.show_cloud(z_flip=True)
         
         elif scan_type == 'sim':
             data = np.loadtxt(filename, skiprows=1)
-            self.numProfiles, self.numPoints = data.shape
+            self.num_rows, self.num_columns = data.shape
             x = data[:,0]
             y = data[:,1]
             z = data[:,2]
             self.cloud = np.array([x, y, z])
-            self.numPoints = self.cloud.shape[1]
 
-    def downsample_cloud(self, maxPoints):
+    def _downsample_cloud(self, maxPoints):
         '''Load fewer points for processing by evenly sampling over xy grid'''
-        if self.numPoints > maxPoints:
-            sampled_indices = np.linspace(0, self.numPoints - 1, maxPoints, dtype=int)
+        if self.num_columns > maxPoints:
+            sampled_indices = np.linspace(0, self.num_columns - 1, maxPoints, dtype=int)
             self.cloud = self.cloud[:, sampled_indices]
-            self.numPoints = self.cloud.shape[1]
+            self.num_columns = self.cloud.shape[1]
 
     def center_cloud_xy(self):
         '''Positions scan in center of xy plane. Does not adjust z values'''
         centroid_xy = [np.mean(self.cloud[0]), np.mean(self.cloud[1])]
-        self.cloud = self.cloud - np.array([centroid_xy[0], centroid_xy[1], 0])[:, np.newaxis]
+        self.cloud -= np.array([centroid_xy[0], centroid_xy[1], 0])[:, np.newaxis]
+
+    def center_cloud(self):
+        '''Centers the point cloud at the origin in the XYZ coordinate system.'''
+        centroid = np.mean(self.cloud, axis=1)
+        self.cloud -= centroid[:, np.newaxis]
 
     def rotate_cloud(self, axis, angle):
         '''Pure rotation of the cloud about the specified axis'''
         self.cloud = Rotate(self.cloud, axis, angle)
         
-    def show_cloud(self, altCloud=0):
-        '''Shows cloud in separate window using PyVista with z value color gradient. If no cloud if provided, shows raw scan'''
-        if isinstance(altCloud, int):
-            Plot_Cloud_PyVista(self.cloud, pointSize=0.5)
+    def show_cloud(self, alternate_cloud=None, z_flip=False):
+        '''Shows cloud in separate window using PyVista with z value color gradient. If no cloud if provided, shows self.cloud'''
+        if alternate_cloud is None:
+            Plot_Cloud_PyVista(self.cloud, pointSize=0.5, z_flip=z_flip)
         else:
-            Plot_Cloud_PyVista(altCloud, pointSize=0.5)
+            Plot_Cloud_PyVista(alternate_cloud, pointSize=0.5, z_flip=z_flip)
 
     def fit_bar_faces(self, cutoff=[-500, 500, -500, 500, -500, 500], plotNum=0, show_flag=False, num_points=8000):
         '''Fits a plane to each of the bar surfaces'''
@@ -270,11 +181,11 @@ class Torsion_Arm_LJS640:
         if show_flag: print('Showing bar cloud'); self.show_cloud(barCloud)
 
         # Find primary face
-        barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.exp_norm, angle_threshold=6)  #6
-        primaryLedges, primaryLedgeAvgs = Find_Ledges_Along_Normal(barPrimaryFaces, normal=self.exp_norm, ledgeThreshold=self.ledgeThreshold, shortLedge=0.01, closeLedges=self.closeLedges)
+        barPrimaryFaces = Cloud_Expected_Normal_Filter(barCloud, self.inner_bar_expected_normal, angle_threshold=self.norm_tolerance_deg)  #6
+        primaryLedges, primaryLedgeAvgs = Find_Ledges_Along_Normal(barPrimaryFaces, normal=self.inner_bar_expected_normal, ledgeThreshold=self.ledge_threshold, shortLedge=0.01, closeLedges=self.close_ledges)
         self.barPrimaryFace = Sort_Ledges(primaryLedges, primaryLedgeAvgs, sortType='size')[0][-1]
         # self.show_cloud(self.barPrimaryFace)
-        self.barPrimaryFace = Clean_Bar_Face(self.barPrimaryFace, radius=self.barFaceRadius)
+        self.barPrimaryFace = Clean_Bar_Face(self.barPrimaryFace, radius=self.inner_bar_surface_radius)
         if show_flag: print('Showing primary bar face'); self.show_cloud(self.barPrimaryFace)
         barPrimaryPlane, _, _ = Calc_Plane(self.barPrimaryFace, plotNum=plotNum, numPoints=num_points)
         barPrimaryNormal = barPrimaryPlane[0:3]
@@ -282,14 +193,14 @@ class Torsion_Arm_LJS640:
         # Find secondary face, which is perpendicular to primary
         exp_secondary_norm = Rotate(barPrimaryNormal, axis='x', angle=-90.0)
         barSecondaryFaces = Cloud_Expected_Normal_Filter(barCloud, exp_secondary_norm, 3)   # 3
-        secondaryLedges, secondaryLedgeAvgs = Find_Ledges_Along_Normal(barSecondaryFaces, normal=exp_secondary_norm, ledgeThreshold=self.ledgeThreshold, shortLedge=0.1, closeLedges=self.closeLedges)
+        secondaryLedges, secondaryLedgeAvgs = Find_Ledges_Along_Normal(barSecondaryFaces, normal=exp_secondary_norm, ledgeThreshold=self.ledge_threshold, shortLedge=0.1, closeLedges=self.close_ledges)
         
         # for ledge in secondaryLedges:
         #     self.show_cloud(ledge)
         
         self.barSecondaryFace = Sort_Ledges(secondaryLedges, secondaryLedgeAvgs, sortType='size')[0][-1]
         # self.show_cloud(self.barSecondaryFace)
-        self.barSecondaryFace = Clean_Bar_Face(self.barSecondaryFace, radius=self.barFaceRadius)
+        self.barSecondaryFace = Clean_Bar_Face(self.barSecondaryFace, radius=self.inner_bar_surface_radius)
         if show_flag: print('Showing secondary bar face'); self.show_cloud(self.barSecondaryFace)
         barSecondaryPlane, _, _ = Calc_Plane(self.barSecondaryFace, plotNum=plotNum*2, numPoints=num_points)
         barSecondaryNormal = barSecondaryPlane[0:3]
@@ -303,345 +214,6 @@ class Torsion_Arm_LJS640:
         self.bar_faces_highest_point = self.bar_faces[:, highest_y_idx]
         if show_flag:
             print('Showing bar surfaces'); self.show_cloud(np.hstack((self.barPrimaryFace, self.barSecondaryFace)))
-
-    def fit_spindle(self, axial_cutoff=-145, num_bins=20, circle_fit_tol=0.3, show=False, plot=False):
-        '''
-        Parameters:
-            axial_cutoff: value above which all points are the spindle. Discards dogbone and bar below
-            num_bins: number of segments to slice spindle into
-            circle_fit_tol: upper (root mean square error) tolerance for accepting a slice's center 
-                            based on how tightly the points fit a circle
-            show: flag to display regions of scan while algorithm finds spindle and axis
-            plot: flag to display each slice's projected circle fit
-        '''
-        min_points_per_bin=10
-        '''Start of finding spindle within cloud'''
-        # Set up frame based on bar axis
-        approx_axis = self.bar_axis
-        if abs(approx_axis[0]) < min(abs(approx_axis[1]), abs(approx_axis[2])):
-            u = np.array([1, 0, 0])
-        elif abs(approx_axis[1]) < abs(approx_axis[2]):
-            u = np.array([0, 1, 0])
-        else:
-            u = np.array([0, 0, 1])
-        u = u - np.dot(u, approx_axis) * approx_axis
-        u = u / np.linalg.norm(u)
-        v = np.cross(approx_axis, u)
-        
-        # Select half of scan which includes spindle
-            # Calculate distances along axis from starting_point
-        starting_point = self.bar_faces_highest_point
-        delta = self.cloud.T - starting_point
-        s = delta @ approx_axis
-        mask = (s <= axial_cutoff)
-        spindle_half = self.cloud.T[mask, :]
-        if show:
-            self.show_cloud(spindle_half.T)
-        
-        # Separate spindle from other objects
-            # Project all points onto plane orthogonal to bar axis and find spindle
-        plane_points = np.dot(spindle_half, np.array([u, v]).T)
-        plane_spindle = Bound_Spindle_2D(plane_points, show=show)
-        
-        # Map planar spindle points back to original 3D cloud
-        plane_points = np.dot(spindle_half, np.array([u, v]).T)  # Recalculate plane_points
-            # Create a mask for points in plane_spindle
-        mask = np.isin(plane_points, plane_spindle).all(axis=1)
-        spindle_bounded = spindle_half[mask]
-        if show:
-            self.show_cloud(spindle_bounded.T)
-        '''End of finding spindle within cloud'''
-        ''''Start of fitting axis to spindle'''
-        # Project spindle points onto bar axis and slice into bins
-        t = np.dot(spindle_bounded, approx_axis)
-        t_min, t_max = np.min(t), np.max(t)
-        bin_edges = np.linspace(t_min, t_max, num_bins + 1)
-        centers = []
-        count = 0
-        for i in range(num_bins):
-            mask = (t >= bin_edges[i]) & (t < bin_edges[i + 1])
-            if np.sum(mask) < min_points_per_bin:
-                continue
-            points_bin = spindle_bounded[mask]
-            
-            # Project points in bin onto the plane orthogonal to bar axis
-            points_2d = np.dot(points_bin, np.array([u, v]).T)
-            maxC = np.max(points_2d)
-            A = np.hstack([points_2d, np.ones((len(points_2d), 1))])
-            b = -(points_2d[:, 0]**2 + points_2d[:, 1]**2)
-            
-            # Fit a circle to projected points and record its center in global 3D frame
-            try:
-                abc = np.linalg.lstsq(A, b, rcond=None)[0]
-                a, b, c = abc
-                discriminant = a**2 + b**2 - 4*c
-                if discriminant > 0:
-                    center_2d = [-a / 2, -b / 2]
-                    radius = np.sqrt((a/2)**2 + (b/2)**2 - c)
-                    residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
-                    rmse = np.sqrt(np.mean(residuals**2))
-                    if rmse < circle_fit_tol:
-                        count += 1
-                        t_center = (bin_edges[i] + bin_edges[i + 1]) / 2
-                        center_3d = t_center * approx_axis + center_2d[0] * u + center_2d[1] * v
-                        centers.append(center_3d)
-            except np.linalg.LinAlgError:
-                continue
-            if plot:# and i < 10:
-                # self.show_cloud(points_bin.T)
-                theta = np.linspace(0, 2 * np.pi, 100)
-                x_circle = center_2d[0] + radius * np.cos(theta)
-                y_circle = center_2d[1] + radius * np.sin(theta)
-                plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
-                plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
-                plt.scatter(center_2d[0], center_2d[1])
-                plt.title(f"Projected Slice {i}. rmse: {rmse}")
-                plt.xlim(-maxC, maxC)
-                plt.ylim(-maxC, maxC)
-                plt.axis('equal')
-                plt.xlabel("u-axis")
-                plt.ylabel("v-axis")
-                plt.show()
-        
-        # Fit a line to 3D centers and evaluate fit quality
-        if len(centers) < 2:
-            raise ValueError("Not enough valid circle fits to determine the axis.")
-        centers = np.array(centers)
-        np.savetxt(r'C:\Users\Public\CapstoneUI\centers.csv', centers, delimiter=',', header='X Y Z')
-        print(f'Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
-        c_axis = np.mean(centers, axis=0)
-        # PCA for line direction
-        U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
-        axis_dir = Vt[0]  # Principal component (largest singular value)
-        if np.dot(axis_dir, approx_axis) < 0:
-            axis_dir = -axis_dir
-        # Calculate fit quality (RMSE of perpendicular distances)
-        projections = np.dot(centers - c_axis, axis_dir)
-        points_on_line = c_axis + np.outer(projections, axis_dir)
-        distances = np.linalg.norm(centers - points_on_line, axis=1)
-        rmse = np.sqrt(np.mean(distances**2))
-        print(f'Axis fit rmse: {rmse}')
-        self.axis_loc = c_axis
-        self.spindle_axis = axis_dir
-        self.spindle_cloud = spindle_bounded.T
-        self.line_fit_rmse = rmse  # Store fit quality
-        if show:
-            pcd = Numpy_to_Open3D(self.spindle_cloud)
-            #visualize_axis(pcd, c_axis, axis_dir, length=100)
-
-    def fit_spindle2(self, axial_cutoff=-145, num_bins=20, side='left', circle_fit_tol=0.3, circle_resid_tol=[1.0], min_fit_points=200, centers_resid_tol=[1.0], show=False, plot=False):
-        '''
-        Parameters:
-            axial_cutoff: value above which all points are the spindle. Discards dogbone and bar below
-            num_bins: number of segments to slice spindle into
-            circle_fit_tol: upper (root mean square error) tolerance for accepting a slice's center 
-                            based on how tightly the points fit a circle
-            show: flag to display regions of scan while algorithm finds spindle and axis
-            plot: flag to display each slice's projected circle fit
-        '''
-        min_points_per_bin=10
-        '''Start of finding spindle within cloud'''
-        # Set up frame based on bar axis
-
-        approx_axis = self.bar_axis
-        if abs(approx_axis[0]) < min(abs(approx_axis[1]), abs(approx_axis[2])):
-            u = np.array([1, 0, 0])
-        elif abs(approx_axis[1]) < abs(approx_axis[2]):
-            u = np.array([0, 1, 0])
-        else:
-            u = np.array([0, 0, 1])
-        u = u - np.dot(u, approx_axis) * approx_axis
-        u = u / np.linalg.norm(u)
-        v = np.cross(approx_axis, u)
-        
-        # Select half of scan which includes spindle
-            # Calculate distances along axis from starting_point
-        spindle_half = self.select_spindle_points(axial_cutoff, side)
-        self.spindle_cloud = spindle_half
-        # if show:
-        #     self.show_cloud(spindle_half.T)
-        
-        # Separate spindle from other objects
-            # Project all points onto plane orthogonal to bar axis and find spindle
-        plane_points = np.dot(spindle_half, np.array([u, v]).T)
-        plane_spindle = Bound_Spindle_2D(plane_points, show=show)
-        
-        # Map planar spindle points back to original 3D cloud
-        plane_points = np.dot(spindle_half, np.array([u, v]).T)  # Recalculate plane_points
-        # Create a mask for points in plane_spindle
-        #mask = np.isin(plane_points, plane_spindle).all(axis=1)
-        spindle_bounded = spindle_half
-        if show:
-            self.show_cloud(spindle_bounded.T)
-        '''End of finding spindle within cloud'''
-        ''''Start of fitting axis to spindle'''
-        # Project spindle points onto bar axis and slice into bins
-        t = np.dot(spindle_bounded, approx_axis)
-        t_min, t_max = np.min(t), np.max(t)
-        bin_edges = np.linspace(t_min, t_max, num_bins + 1)
-        centers = []
-        count = 0
-        for i in range(num_bins):
-            mask = (t >= bin_edges[i]) & (t < bin_edges[i + 1])
-            if np.sum(mask) < min_points_per_bin:
-                continue
-            points_bin = spindle_bounded[mask]
-            
-            def fit_circle(points_2d):
-                maxC = np.max(points_2d)
-                A = np.hstack([points_2d, np.ones((len(points_2d), 1))])
-                b = -(points_2d[:, 0]**2 + points_2d[:, 1]**2)
-
-                # Fit a circle to projected points and record its center in global 3D frame
-                try:
-                    abc = np.linalg.lstsq(A, b, rcond=None)[0]
-                    a, b, c = abc
-                    discriminant = a**2 + b**2 - 4*c
-                    if discriminant > 0:
-                        center_2d = [-a / 2, -b / 2]
-                        radius = np.sqrt((a/2)**2 + (b/2)**2 - c)
-                except np.linalg.LinAlgError:
-                    return 0, 0, -1
-
-                return center_2d, maxC, radius
-
-            def filter_circle(points, center, iqr_scale):
-                radii = np.sqrt((points[:, 0] - center[0])**2 + (points[:, 1] - center[1])**2)
-                Q1, Q3 = np.percentile(radii, [25, 75])
-                IQR = Q3 - Q1
-                lower_bound = Q1 - iqr_scale * IQR
-                upper_bound = Q3 + iqr_scale * IQR
-                filtered_points = points[(radii >= lower_bound) & (radii <= upper_bound), :]
-                return filtered_points
-
-            filt_points = points_bin.T
-            points_2d = np.dot(filt_points.T, np.array([u, v]).T)
-            center_2d, maxC, radius = fit_circle(points_2d)
-            for j, iqr_scale in enumerate(circle_resid_tol):
-                if (radius < 0):
-                    continue
-
-                points_2d = filter_circle(points_2d, center_2d, iqr_scale)
-                center_2d, maxC, radius = fit_circle(points_2d)
-
-                residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
-                rmse = np.sqrt(np.mean(residuals**2))
-
-                if self.ui:
-                    self.ui.log_message(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points, rmse: {rmse:.4f}")
-                else:
-                    print(f"\tSlice {i} Iteration {j}: filtering {points_2d.shape[0]} points, rmse: {rmse:.4f}")
-
-                if plot and i % 10 == 0:
-                    # self.show_cloud(points_bin.T)
-                    theta = np.linspace(0, 2 * np.pi, 100)
-                    x_circle = center_2d[0] + radius * np.cos(theta)
-                    y_circle = center_2d[1] + radius * np.sin(theta)
-                    plt.plot(x_circle, y_circle, 'r-', label='Best-fit circle', linewidth=0.5)
-                    plt.scatter(points_2d[:, 0], points_2d[:, 1], s=1)
-                    plt.scatter(center_2d[0], center_2d[1])
-                    plt.title(f"Projected Slice {i}: Iteration: {j}, rmse: {rmse:.4f}, Points: {points_2d.shape[0]}")
-                    plt.figtext(0.25, 0.0, f"IQR Scale: {iqr_scale}, Center = ({center_2d[0]}, {center_2d[1]})")
-                    plt.xlim(-maxC, maxC)
-                    plt.ylim(-maxC, maxC)
-                    plt.axis('equal')
-                    plt.xlabel("u-axis")
-                    plt.ylabel("v-axis")
-                    plt.show() 
-
-            if points_2d.shape[0] >= min_fit_points:
-                residuals = np.sqrt((points_2d[:, 0] - center_2d[0])**2 + (points_2d[:, 1] - center_2d[1])**2) - radius
-                rmse = np.sqrt(np.mean(residuals**2))
-                if rmse < circle_fit_tol:
-                    count += 1
-                    t_center = (bin_edges[i] + bin_edges[i + 1]) / 2
-                    center_3d = t_center * approx_axis + center_2d[0] * u + center_2d[1] * v
-                    centers.append(center_3d)
-
-        def filter_centers(centers, direction, iqr_scale, plot=False):
-            if direction == "x":
-                index = 0
-            elif direction == "z":
-                index = 2
-            
-            trend = np.polyfit(centers[:, 1], centers[:, index], 1)
-
-            if plot:
-                plt.clf()
-                plt.title(f"Iteration: {i}, IQR Scale: {iqr_scale}")
-                plt.scatter(centers[:, 1], centers[:, index])
-                plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend[0] * np.min(centers[:, 1]) + trend[1], trend[0] * np.max(centers[:, 1]) + trend[1]], 
-                         linestyle='dashed', color='r')
-                plt.xticks(np.linspace(np.min(centers[:, 1]), np.max(centers[:, 1]), 7))
-                plt.yticks(np.linspace(np.min(centers[:, index]), np.max(centers[:, index]), 5))
-                plt.ylabel(f"{direction}-axis")
-                plt.xlabel("y-axis")
-                plt.show()
-
-            distances = centers[:, index] - (trend[0] * centers[:, 1] + trend[1])
-
-            Q1, Q3 = np.percentile(distances, [25, 75])
-            IQR = Q3 - Q1
-            lower_bound = Q1 - iqr_scale * IQR
-            upper_bound = Q3 + iqr_scale * IQR
-            filtered_centers = centers[(distances >= lower_bound) & (distances <= upper_bound), :]
-            return filtered_centers, trend
-        
-        if len(centers) < 2:
-                raise ValueError("Not enough valid circle fits to determine the axis.")
-        centers = np.array(centers)
-
-        for i, iqr_scale in enumerate(centers_resid_tol):
-            print(f'Iteration {i + 1}: Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
-            centers, trend_z = filter_centers(centers, "z", iqr_scale, plot=plot)
-            centers, trend_x = filter_centers(centers, "x", iqr_scale, plot=plot)
-        
-        np.savetxt(r'C:\Users\Public\CapstoneUI\centersFiltered.csv', centers, delimiter=',', header='X Y Z')
-
-        print(f'Filtered Fitting axis to {len(centers)} of {num_bins} spindle slice centers')
-        c_axis = np.mean(centers, axis=0)
-        # PCA for line direction
-        U, S, Vt = np.linalg.svd(centers - c_axis, full_matrices=False)
-        axis_dir = Vt[0]  # Principal component (largest singular value)
-        if np.dot(axis_dir, approx_axis) < 0:
-            axis_dir = -axis_dir
-        # Calculate fit quality (RMSE of perpendicular distances)
-        projections = np.dot(centers - c_axis, axis_dir)
-        points_on_line = c_axis + np.outer(projections, axis_dir)
-        distances = np.linalg.norm(centers - points_on_line, axis=1)
-        rmse = np.sqrt(np.mean(distances**2))
-
-        if plot:
-            fig, axes = plt.subplots(nrows=2, ncols=1)
-            plt.setp(axes, xticks=[], yticks=[])
-
-            plt.sca(axes[0])
-            #plt.title(f"Iteration: {i}, rmse: {rmse:.4f}, IQR Scale: {iqr_scale}")
-            plt.scatter(centers[:, 1], centers[:, 0])
-            plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_x[0] * np.min(centers[:, 1]) + trend_x[1], trend_x[0] * np.max(centers[:, 1]) + trend_x[1]], 
-                       linestyle='dashed', color='r')
-            plt.yticks(np.linspace(np.min(centers[:, 0]), np.max(centers[:, 0]), 5))
-            plt.ylabel("x-axis")
-
-            plt.sca(axes[1])
-            plt.scatter(centers[:, 1], centers[:, 2])
-            plt.plot([np.min(centers[:, 1]), np.max(centers[:, 1])], [trend_z[0] * np.min(centers[:, 1]) + trend_z[1], trend_z[0] * np.max(centers[:, 1]) + trend_z[1]], 
-                       linestyle='dashed', color='r')
-            plt.yticks(np.linspace(np.min(centers[:, 2]), np.max(centers[:, 2]), 5))
-            plt.xticks(np.linspace(np.min(centers[:, 1]), np.max(centers[:, 1]), 7))
-            plt.xlabel("y-axis")
-            plt.ylabel("z-axis")
-
-            plt.show()
-
-        print(f'Axis fit rmse: {rmse}')
-        self.axis_loc = c_axis
-        self.spindle_axis = axis_dir
-        self.spindle_cloud = spindle_bounded.T
-        self.line_fit_rmse = rmse  # Store fit quality
-        if show:
-            pcd = Numpy_to_Open3D(self.spindle_cloud)
-            #visualize_axis(pcd, c_axis, axis_dir, length=100)
 
 #region SPINDLE FIT
     class Panel:
@@ -670,41 +242,16 @@ class Torsion_Arm_LJS640:
         v = np.cross(approx_axis, u)
         return u, v
 
-    def select_spindle_points(self, axial_cutoff, show_flag=False, spindle_cuts=None):
+    def select_spindle_points(self, bbox_coarse, bbox_fine, debug_flag=False):
         """Select points along the bar axis below the axial cutoff."""
-        projection = np.dot(self.cloud.T, self.bar_axis)
-        if self.side == 'left':
-            mask = (projection <= axial_cutoff)
-        elif self.side == 'right':
-            mask = (projection >= axial_cutoff)
-
-        if show_flag:
-            print('Showing spindle cloud after axial filter'); self.show_cloud(self.cloud.T[mask, :].T)
-
-        # Compute z maximum and filter points according to it
         
-        y_values = self.cloud.T[mask, 1]
-        y_max = np.max(y_values)
-        z_values = self.cloud.T[mask, 2]  
-        z_max = np.max(z_values)
+        temp_cloud = Apply_BBox(self.cloud, bbox_coarse)
+        if debug_flag: print('Showing spindle_coarse'); self.show_cloud(temp_cloud)
 
-        if self.scan_type == 'sim':
-            z_threshold_top = z_max + 1000
-            z_threshold_bottom = -1000
-            y_threshold_front = 1000
+        temp_cloud = Apply_BBox(self.cloud, bbox_fine)
+        if debug_flag: print('Showing spindle_fine'); self.show_cloud(temp_cloud)
 
-        elif self.scan_type == 'live':
-            z_threshold_top = z_max - 25 #20
-            z_threshold_bottom = z_threshold_top - 70 #45
-            if self.side == 'right':
-                y_threshold_front = y_max - 25      # 25
-            elif self.side == 'left':
-                y_threshold_front = y_max + 25
-
-        z_mask = (z_values <= z_threshold_top) & (z_values >= z_threshold_bottom) & (y_values <= y_threshold_front)
-        final_mask = mask.copy()
-        final_mask[final_mask] = z_mask
-        return self.cloud.T[final_mask, :]
+        return temp_cloud.T
 
     def project_to_xy(self, points_3d):
         """Project 3D points onto the global XY plane."""
@@ -1658,7 +1205,8 @@ class Torsion_Arm_LJS640:
         print(f'Fitting cylinder to final {panel.num_points} points')
         self.fit_cylinder_to_panel(panel)
 
-    def fit_spindle_3D(self, axial_cutoff=-150, show_flag=False, plot_flag=False, box_size=50.0, spindle_cuts=[0, 500, 0, 500], overlap_factor=1.1, max_radius=50):
+    def fit_spindle_3D(self, bbox_coarse, bbox_fine, show_flag=False, plot_flag=False, box_size=50.0, 
+                       overlap_factor=1.1, max_radius=50):
         """
         Fits a 3D spindle by creating grids of decreasing panel sizes, keeping good fits.
 
@@ -1675,10 +1223,8 @@ class Torsion_Arm_LJS640:
         col_tol = 0.99  # 0.99
         
         # Setup coordinate system and project points
-        spindle_points = self.select_spindle_points(axial_cutoff, show_flag=show_flag, spindle_cuts=spindle_cuts)
+        spindle_points = self.select_spindle_points(bbox_coarse, bbox_fine, debug_flag=show_flag)
         self.spindle_cloud = spindle_points
-        if show_flag:
-            print('Showing spindle cloud after all filters'); self.show_cloud(spindle_points.T)
         self.points_xy = self.project_to_xy(spindle_points)
         
         self.axis_xy = self.bar_axis[:2]
@@ -1878,7 +1424,7 @@ class Torsion_Arm_LJS640:
             print(f'Centers stddev: {stddev:.3f}')
             if self.scan_type == 'sim':
                 tol = 0.01
-            elif self.scan_type == 'live':
+            elif self.scan_type == 'real':
                 tol = 0.025
             if stddev <= tol or len(centers)/len(centers_orig) <= 0.75:
                 return centers
@@ -1988,20 +1534,6 @@ class Torsion_Arm_LJS640:
 
         o3d.visualization.draw_geometries([spindle_pcd, bar_pcd, origin_x, origin_y, origin_z])
 
-    def calc_angles(self):
-        B = np.array(self.bar_axis) / np.linalg.norm(self.bar_axis)
-        S = np.array(self.spindle_axis) / np.linalg.norm(self.spindle_axis)
-        if not np.isclose(np.linalg.norm(B), 1.0) or not np.isclose(np.linalg.norm(S), 1.0):
-            raise ValueError("Inputs must be unit vectors")
-        self.bar_align = np.degrees(np.array([np.arccos(B[0]), np.arccos(B[1]), np.arccos(B[2])]))
-        self.spindle_align = np.degrees(np.array([np.arccos(S[0]), np.arccos(S[1]), np.arccos(S[2])]))
-        R = np.cross(B, S)
-        sin_theta = np.linalg.norm(R)
-        theta_deg = np.degrees(np.arcsin(sin_theta))
-        self.total_angle = theta_deg
-        Rx_deg, Ry_deg, Rz_deg = np.degrees(R)
-        self.relative_angle = np.array([Rx_deg, Ry_deg, Rz_deg])
-
     def calc_toe_camber(self):
         # Bar axis calculations
         v_x, v_y, v_z = self.bar_axis
@@ -2083,8 +1615,6 @@ class Torsion_Arm_LJS640:
         print(f'Total Misalignment:\t{self.total_misalign:.4f}')
 
     def save_angles_to_csv(self, csv_filename="angles_output.csv", note="Alignment data for spindle and bar"):
-        import os
-        import pandas as pd
         """
         Appends bar and spindle axis, alignment, relative toe/camber, and total misalignment to a CSV file.
         Places note above headers and updates average and standard deviation rows.
@@ -2160,30 +1690,243 @@ class Torsion_Arm_LJS640:
         # Save to CSV without adding an extra header
         # final_df.to_csv(csv_filename, index=False, float_format='%.6f', header=False)
 
-    def plot_vectors(self):
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
+    def plot_unit_vectors(self):
+        # Create plotter
+        plotter = pv.Plotter()
+        plotter.set_background('gray')
         
         # Origin
         origin = np.array([0, 0, 0])
         
-        # Plot vectors
-        ax.quiver(*origin, *self.bar_axis, color='b', label='bar')
-        ax.quiver(*origin, *self.spindle_axis, color='r', label='spindle')
-        ax.quiver(*origin, 1, 0, 0, color='k', linestyle='--', label='X-axis')
-        ax.quiver(*origin, 0, 1, 0, color='g', linestyle='--', label='Y-axis')
+        # Add arrows for main vectors (solid, thicker for visibility)
+        plotter.add_arrows(origin, self.bar_axis, color='blue', label='bar', mag=1.0, line_width=0.5)
+        plotter.add_arrows(origin, self.spindle_axis, color='red', label='spindle', mag=1.0, line_width=0.5)
         
-        # Set equal aspect ratio
-        max_range = max(np.linalg.norm(self.bar_axis), np.linalg.norm(self.spindle_axis)) * 1.5
-        ax.set_xlim([-max_range, max_range])
-        ax.set_ylim([-max_range, max_range])
-        ax.set_zlim([-max_range, max_range])
+        # Add dashed lines for reference axes (using lines with stipple pattern)
+        # X-axis
+        x_line = pv.Line(origin, [1, 0, 0])
+        x_actor = plotter.add_mesh(x_line, color='yellow', line_width=3, label='X-axis')
+        x_actor.GetProperty().SetLineStipplePattern(0xF0F0)  # Dashed pattern
+        x_actor.GetProperty().SetLineStippleRepeatFactor(1)
         
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.legend()
-        plt.show()
+        # Y-axis
+        y_line = pv.Line(origin, [0, 1, 0])
+        y_actor = plotter.add_mesh(y_line, color='green', line_width=3, label='Y-axis')
+        y_actor.GetProperty().SetLineStipplePattern(0xF0F0)  # Dashed pattern
+        y_actor.GetProperty().SetLineStippleRepeatFactor(1)
+        
+        # Add arc to highlight the misalignment
+        if self.total_misalign > 0:  # Only add if there's misalignment
+            arc = pv.CircularArc(pointa=self.bar_axis, pointb=self.spindle_axis, center=origin, resolution=100)
+            plotter.add_mesh(arc, color='yellow', line_width=2, label='Misalignment arc')
+        
+        # Add text for misalignment angle
+        plotter.add_text(f"Misalignment: {self.total_misalign:.4f} degrees", position='upper_left', font_size=14, color='white')
+        
+        # Optimize camera view to maximize visibility of misalignment
+        cross_prod = np.cross(self.bar_axis, self.spindle_axis)
+        if np.linalg.norm(cross_prod) > 1e-6:  # Avoid division by zero if perfectly aligned
+            n = cross_prod / np.linalg.norm(cross_prod)
+            # Set camera to look along the normal to the plane of the two vectors
+            plotter.camera.position = n * 2.0  # Position camera along normal, slightly offset
+            plotter.camera.focal_point = origin
+            plotter.camera.up = np.cross(n, self.bar_axis)  # Set up vector perpendicular
+        else:
+            # Default view if aligned
+            plotter.camera_position = [1, 1, 1]
+            plotter.camera.focal_point = origin
+            plotter.camera.up = [0, 0, 1]
+        
+        # Tight bounds and parallel projection for better depth perception
+        plotter.camera.SetParallelProjection(True)
+        plotter.reset_camera()
+        
+        # Add axes for reference
+        plotter.add_axes(xlabel='X', ylabel='Y', zlabel='Z', line_width=4)
+        
+        # Show legend
+        plotter.add_legend()
+        
+        # Display interactive plot
+        plotter.show(auto_close=False, interactive=True)
+
+
+
+class Axle_Hub_LJS640:  
+    def __init__(self, filename, view_angle_horizontal=0.0, scanType='real', cutOff=[-500, 500], ui=None):
+        self.ui = ui
+        self.minPoints = 10000
+        self.anglePoints = 2000
+        self.norm_tolerance_deg = 10.0
+        self.dist_tolerange_mm = 15.0
+        self.max_x_width = 640
+        self.min_x_width = 579
+        self.reference_z_depth = 1116
+        self.min_z_depth = 936
+        self.exp_norm = Normal_of_Rotated_Plane(axis='y', angle=view_angle_horizontal)
+        
+        if scanType == 'real':
+            data = np.loadtxt(filename, delimiter=',', dtype=np.float64)
+            z_scaling_factor = 1
+           
+            self.numProfiles, self.numPoints = data.shape
+            profile_indices = np.arange(self.numProfiles) - self.numProfiles / 2
+            point_indices = (np.arange(self.numPoints) - self.numPoints / 2) * 0.2
+            x, y = np.meshgrid(profile_indices, point_indices, indexing='ij')
+            x = x.ravel()
+            y = y.ravel()
+            z = data.ravel() * z_scaling_factor
+            valid_mask = (z >= -500) & (z <= 500)
+            x = x[valid_mask]
+            y = y[valid_mask]
+            z = z[valid_mask]
+
+            xScaleSlope = ((self.min_x_width - self.max_x_width) / self.numPoints) / \
+                          (self.reference_z_depth - self.min_z_depth)
+            scale_factors = np.where(z <= 0, 0.2, 0.2 + xScaleSlope*z)
+            x *= scale_factors
+
+            valid_mask = (x > -1000) & (x < 1000) & (z >= cutOff[0]) & (z <= cutOff[1])
+            x = x[valid_mask]
+            y = y[valid_mask]
+            z = z[valid_mask]
+
+            self.cloud = np.array([y, -x, z])
+            self.numPoints = self.cloud.shape[1]
+        elif scanType == 'sim':
+            data = np.loadtxt(filename, skiprows=1)
+            self.numProfiles, self.numPoints = data.shape
+            x = data[:,0]
+            y = data[:,1]
+            z = data[:,2]
+            self.cloud = np.array([x, y, z])
+            self.numPoints = self.cloud.shape[1]
+        
+    def downsample_cloud(self, maxPoints):
+        if self.numPoints > maxPoints:
+            sampled_indices = np.linspace(0, self.numPoints - 1, maxPoints, dtype=int)
+            self.cloud = self.cloud[:, sampled_indices]
+            self.numPoints = self.cloud.shape[1]
+
+    def trim_cloud_z(self, cutOff=[-500, 500]):
+        valid_mask = (self.cloud[2] >= cutOff[0]) & (self.cloud[2] <= cutOff[1])
+        myCloud = self.cloud[:, valid_mask]
+        if myCloud.shape[1] >= self.minPoints:
+            self.cloud = myCloud
+            self.numPoints = self.cloud.shape[1]
+        else:    
+            if self.ui:
+                self.ui.log_message(f'Trimming Error: Less than {self.minPoints} points in trimmed cloud. Returning untrimmed cloud')
+            else:
+                print(f'Trimming Error: Less than {self.minPoints} points in trimmed cloud. Returning untrimmed cloud')
+        
+    def show_cloud(self, altCloud=0):
+        if isinstance(altCloud, int):
+            Plot_Cloud_PyVista(self.cloud, pointSize=0.5, ui=self.ui)
+        else:
+            Plot_Cloud_PyVista(altCloud, pointSize=0.5, ui=self.ui)
+
+    def align_z(self, auto=True):
+        myCloud, R_matrix = Broadface_to_Z(self.cloud, self.exp_norm, self.norm_tolerance_deg, ui=self.ui)
+        self.cloud = myCloud
+        if auto == False:
+            if self.ui:
+                self.ui.log_message('Showing rotated cloud')
+            else:
+                print('Showing rotated cloud')
+            for row in R_matrix:
+                if self.ui:
+                    self.ui.log_message(' '.join(f'{elem:.6f}' for elem in row))
+                else:
+                    print(' '.join(f'{elem:.6f}' for elem in row))
+            self.show_cloud(myCloud)
+            ans = input('Keep cloud after this rotation: y/n')
+            if ans == 'n':
+                if self.ui:
+                    self.ui.log_message('Rejecting cloud. Terminating attempt')
+                else:
+                    print('Rejecting cloud. Terminating attempt')
+                self.cloud = np.nan
+        
+    def rotate(self, axis, angle):
+        angle = np.radians(angle)
+        if axis == 'x':
+            R = np.array([[1, 0, 0],
+                         [0, np.cos(angle), -np.sin(angle)],
+                         [0, np.sin(angle), np.cos(angle)]])    
+        elif axis == 'y':
+            R = np.array([[np.cos(angle), 0, np.sin(angle)],
+                         [0, 1, 0],
+                         [-np.sin(angle), 0, np.cos(angle)]])
+        elif axis == 'z':
+            R = np.array([[np.cos(angle), -np.sin(angle), 0],
+                         [np.sin(angle), np.cos(angle), 0],
+                         [0, 0, 1]])
+        else:
+            raise ValueError("Axis must be 'x', 'y', or 'z'.")
+        self.cloud = np.dot(R, np.array(self.cloud))
+
+    def sort_ledges(self):
+        self.cloud = Cloud_Expected_Normal_Filter(self.cloud, self.exp_norm, angle_threshold=self.norm_tolerance_deg, ui=self.ui)
+        myLedges, myLedgeAvgs = Find_Ledges_Along_Normal(self.cloud, normal=[0, 0, 1], ledgeThreshold=2.0, shortLedge=0.01, closeLedges=4.5, ui=self.ui)
+        self.sorted_ledges, self.sorted_ledge_avgs = Sort_Ledges(myLedges, myLedgeAvgs)
+
+    def calc_ref_angle(self, index=0, plotNum=0):
+        self.ref_ledge = self.sorted_ledges[index]
+        self.ref_plane, self.ref_angle, _ = Calc_Plane(self.ref_ledge, numPoints=self.anglePoints, plotNum=plotNum, ui=self.ui)
+
+    def calc_hub_angle(self, index=None, auto=True, plotNum=0, deleteGround=False):
+        if index != None:
+            self.hub_plane, self.hub_angle, _ = Calc_Plane(self.sorted_ledges[index], numPoints=self.anglePoints, plotNum=plotNum, ui=self.ui)
+        else:
+            self.hub_ledge, self.hub_avg = Find_HubFace(self.sorted_ledges, self.sorted_ledge_avgs, deleteGround=deleteGround, ui=self.ui)
+            
+            if auto == True:
+                self.hub_plane, self.hub_angle, _ = Calc_Plane(self.hub_ledge, numPoints=self.anglePoints, plotNum=plotNum, ui=self.ui)
+            
+            elif auto == False:
+                ans = 'No'
+                while ans != 'Yes':
+                    self.show_cloud(self.hub_ledge)
+                    ans = self.ui.get_input(message='Is this the hub face?')
+                    if ans == 'Yes':
+                        break
+                    if self.hub_avg in self.sorted_ledge_avgs:
+                        current_index = self.sorted_ledge_avgs.index(self.hub_avg)
+                    else:
+                        if self.ui:
+                            self.ui.log_message("Error: Hub average not found in sorted ledge averages.")
+                        else:
+                            print("Error: Hub average not found in sorted ledge averages.")
+                        return
+                    
+                    ans2 = self.ui.get_input(message='Move to next ledge up or down?', options=["Up", "Down"])
+                    while ans2 not in ('Up', 'Down'):
+                        ans2 = input('Input not allowed. Move to ledge up or down: u/d ')
+                    if ans2 == 'Up' and current_index < len(self.sorted_ledges) - 1:
+                        current_index += 1
+                    elif ans2 == 'Down' and current_index > 0:
+                        current_index -= 1
+                    else:
+                        if self.ui:
+                            self.ui.log_message("Cannot move further in that direction.")
+                        else:
+                            print("Cannot move further in that direction.")
+                    self.hub_ledge = self.sorted_ledges[current_index]
+                    self.hub_avg = self.sorted_ledge_avgs[current_index]
+                self.hub_plane, self.hub_angle, _ = Calc_Plane(self.hub_ledge, numPoints=self.anglePoints, plotNum=plotNum, ui=self.ui)
+
+    def calc_hub_relative_angle(self):
+        self.hub_relative_angle = self.hub_angle - self.ref_angle
+
+
+
+def Apply_BBox(cloud, bbox):
+    valid_mask = (cloud[0] >= bbox[0]) & (cloud[0] <= bbox[1]) & \
+                 (cloud[1] >= bbox[2]) & (cloud[1] <= bbox[3]) & \
+                 (cloud[2] >= bbox[4]) & (cloud[2] <= bbox[5])
+    
+    return cloud[:, valid_mask]
 
 def Trim_Cloud(cloud, direction, cutOff=[-500,500], minPoints=10000):
     untrimmed_cloud = cloud
@@ -2392,21 +2135,57 @@ def Calc_Plane(points, title=0, plotNum=0, numPoints=1000, ui=None):
 
     return plane_final, np.array([x_angle, y_angle, z_angle]), uncertainty_95
 
-def Plot_Cloud_PyVista(points, pointSize=1.0, ui=None):
+def Plot_Cloud_PyVista(points, pointSize=1.0, ui=None, z_flip=False):
     cloud = pv.PolyData(points.T)
+    message = f"Displaying {points.shape[1]} points\n'q': advance, 'c': cycle axis\n"
     if ui:
-        ui.log_message(f'Displaying {points.shape[1]} points in PyVista window\n\tTo continue, select PyVista window and press q\n\tDo not close PyVista window')
+        ui.log_message(message)
     else:
-        print(f'Displaying {points.shape[1]} points')
+        print(message)
     time.sleep(0.1)
-    z_values = points[2]
-    cloud.point_data['z'] = z_values
-    cloud.point_data.set_array(z_values, 'z')
+    
+    # Add point data for all axes to enable dynamic switching
+    cloud.point_data['x'] = points[0]
+    cloud.point_data['y'] = points[1]
+    cloud.point_data['z'] = points[2]
+    
     plotter = pv.Plotter()
     plotter.set_background('gray')
-    plotter.add_mesh(cloud, scalars='z', cmap='coolwarm', point_size=pointSize)
+    
+    # Add the mesh with initial scalars on 'z'
+    actor = plotter.add_mesh(cloud, scalars='z', cmap='coolwarm', point_size=pointSize)
+    
+    plotter.view_xy(negative=z_flip)    
     plotter.add_axes(xlabel='X (Axle)', ylabel='Y (Motion)', zlabel='Z (Vertical)',
                      line_width=4, labels_off=False)
+    
+    # State for current color axis (use list for mutability)
+    current_axis = ['z']
+    
+    # Add a text actor to display the current color axis at bottom left
+    text_actor = plotter.add_text(f"Color by {current_axis[0].upper()}", position='lower_left', font_size=14, color='white')
+    
+    def cycle_color_axis():
+        axes = ['x', 'y', 'z']
+        idx = (axes.index(current_axis[0]) + 1) % 3
+        current_axis[0] = axes[idx]
+        cloud.point_data.active_scalars_name = current_axis[0]
+        
+        # Update the scalar range to span the values of the new axis
+        min_val = cloud.point_data.active_scalars.min()
+        max_val = cloud.point_data.active_scalars.max()
+        actor.GetMapper().SetScalarRange(min_val, max_val)
+        plotter.update_scalar_bar_range([min_val, max_val])
+        
+        # Update the on-screen text
+        text_actor.SetText(0, f"Color by {current_axis[0].upper()}")
+        
+        plotter.render()
+        message = f"Color gradient now applied to {current_axis[0].upper()} axis."
+        if ui:
+            ui.log_message(message)
+        else:
+            print(message)
     
     def orbit_left():
         plotter.camera.azimuth -= 1
@@ -2438,7 +2217,8 @@ def Plot_Cloud_PyVista(points, pointSize=1.0, ui=None):
     plotter.add_key_event('8', orbit_up)
     plotter.add_key_event('2', orbit_down)
     plotter.add_key_event('s', save_image)
-    plotter.camera_position = 'xy'
+    plotter.add_key_event('c', cycle_color_axis)  # Press 'c' to cycle color axis
+    
     plotter.camera_set = True
     plotter.reset_camera()
     plotter.camera.SetParallelProjection(True)
