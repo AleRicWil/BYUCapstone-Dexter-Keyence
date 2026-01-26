@@ -29,7 +29,7 @@ def main(filename=None, auto_flag=False, scan_type='live', side='right', ui=None
             scan1.rotate_cloud(axis='z', angle=180); scan1.rotate_cloud(axis='x', angle=-90)
             # scan1.rotate_cloud(axis='z', angle=180); scan1.rotate_cloud(axis='x', angle=90)
         if side == 'left':
-            pass
+            scan1.rotate_cloud(axis='z', angle=0); scan1.rotate_cloud(axis='x', angle=90)
    
     if debug_flag:
         print('Showing oriented scan'); scan1.show_cloud()
