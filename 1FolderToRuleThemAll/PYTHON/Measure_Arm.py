@@ -12,19 +12,19 @@ def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=Fals
     
     # setup bounding boxes for type of scan and type of arm
 
-    bboxes = {} # units: mm. bounding box faces. x_min, x_max, y_min, y_max, z_min, z_max 
+    bboxes = {} # units: mm. bounding box faces. x_min, x_max, y_min, y_max, z_min, z_max ````````
 
-    bboxes['raw_trim'] = [-NO_LIMIT, NO_LIMIT, -NO_LIMIT, 250, -NO_LIMIT, NO_LIMIT]
+    bboxes['raw_trim'] = [-NO_LIMIT, NO_LIMIT, -90, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
     
     if scan_type == 'real':
         if side == 'right':             #    x_min,    x_max,     y_min,    y_max,     z_min,    z_max
-            bboxes['inner_bar'] =       [-NO_LIMIT,       50, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT] 
-            bboxes['spindle_coarse'] =  [       96, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
-            bboxes['spindle_fine'] =    [       96, NO_LIMIT,      -115,      -45, -NO_LIMIT,      -70]
+            bboxes['inner_bar'] =       [-NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT] 
+            bboxes['spindle_coarse'] =  [-NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
+            bboxes['spindle_fine'] =    [-NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
         elif side == 'left':
             bboxes['inner_bar'] =       [      -50, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
-            bboxes['spindle_coarse'] =  [-NO_LIMIT,      -96, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
-            bboxes['spindle_fine'] =    [-NO_LIMIT,      -96,      -115,      -70,      -110,      -40]
+            bboxes['spindle_coarse'] =  [-NO_LIMIT,     -123, -NO_LIMIT, NO_LIMIT,        10, NO_LIMIT]
+            bboxes['spindle_fine'] =    [-NO_LIMIT,     -123, -NO_LIMIT, NO_LIMIT,        10, NO_LIMIT]
     
     elif scan_type == 'sim':
         if side == 'right':
@@ -48,7 +48,7 @@ def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=Fals
             scan1.rotate_cloud(axis='z', angle=180)
             scan1.rotate_cloud(axis='x', angle=180)
         if side == 'left':
-            scan1.rotate_cloud(axis='z', angle=0); scan1.rotate_cloud(axis='x', angle=90)
+            scan1.rotate_cloud(axis='z', angle=0); scan1.rotate_cloud(axis='x', angle=90+180)
     
     elif scan_type == 'sim':
         if side == 'right':
@@ -83,5 +83,5 @@ def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=Fals
     return results
 
 if __name__ == "__main__":
-    main(filename=r'Scan_Data/cold_rolled_arm_01.csv', side='right', scan_type='real', debug_flag=False)
+    main(filename=r"C:\Users\LJSTe\Desktop\BYU Repository\BYUCapstone-Dexter-Keyence\RealScans\1234.csv", side='left', scan_type='real', debug_flag=True)
  

@@ -104,7 +104,7 @@ class Crank_Arm_ASSY_LJS640:
             z = data.ravel()*z_scale + self.reference_z
 
             # filter pixels by z-value to only include values inside scanner's FOV. for efficiency
-            valid_mask = (z >= self.near_z_limit) & (z <= self.far_z_limit)
+            valid_mask = (z >= 0) & (z <= self.far_z_limit)
             x = x[valid_mask]
             y = y[valid_mask]
             z = z[valid_mask]
