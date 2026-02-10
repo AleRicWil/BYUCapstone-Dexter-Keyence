@@ -4,63 +4,79 @@ import time
 # global variables
 NO_LIMIT = 2000 # units: mm. bounding box face default value to not trim. max possible scanner value is 1136
 
-def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=False):
+# Updates to Measure_Arm.py
+
+def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=False, bboxes_dict=None, rotations_list=None):
+    """
+    Main processing function for crank arm alignment.
+    If bboxes_dict is provided, uses those bounding boxes for trimming regions.
+    Otherwise, defaults to unlimited bounds (NO_LIMIT) for all regions to avoid trimming,
+    and prints a message to console if no custom bboxes are specified.
+    This ensures computational efficiency by only applying necessary trims, but falls back
+    gracefully if no custom bboxes are provided.
+    """
     if filename is None:
         filename = r'C:/Users/Public/CapstoneUI/temporary_scan.csv'
     if scan_type not in ['real', 'sim']: raise ValueError("Invalid scan_type. Options: 'real', 'sim'")
     if side not in ['right', 'left']: raise ValueError("Invalid side. Options: 'right', 'left'")
     
-    # setup bounding boxes for type of scan and type of arm
-
-    bboxes = {} # units: mm. bounding box faces. x_min, x_max, y_min, y_max, z_min, z_max ````````
-
-    bboxes['raw_trim'] = [-NO_LIMIT, NO_LIMIT, -90, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
+    # Define NO_LIMIT and full unbounded bbox
+    NO_LIMIT = 2000  # units: mm. Max possible scanner value is 1136, but 2000 ensures no trim
+    full_bbox = [-NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
     
-    if scan_type == 'real':
-        if side == 'right':             #    x_min,    x_max,     y_min,    y_max,     z_min,    z_max
-            bboxes['inner_bar'] =       [-NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT] 
-            bboxes['spindle_coarse'] =  [-NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
-            bboxes['spindle_fine'] =    [-NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
-        elif side == 'left':
-            bboxes['inner_bar'] =       [      -50, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
-            bboxes['spindle_coarse'] =  [-NO_LIMIT,     -123, -NO_LIMIT, NO_LIMIT,        10, NO_LIMIT]
-            bboxes['spindle_fine'] =    [-NO_LIMIT,     -123, -NO_LIMIT, NO_LIMIT,        10, NO_LIMIT]
+    # Use provided bboxes or default to unlimited
+    if bboxes_dict is None:
+        print("No bounding boxes provided. Using unlimited bounds for all regions to process the full scan.")
+        bboxes = {
+            'raw_trim': full_bbox,
+            'inner_bar': full_bbox,
+            'spindle_coarse': full_bbox,
+            'spindle_fine': full_bbox  # Optional, but included for consistency
+        }
+    else:
+        bboxes = bboxes_dict
+        # Ensure all keys exist, fall back to full if missing (for robustness)
+        for key in ['raw_trim', 'inner_bar', 'spindle_coarse', 'spindle_fine']:
+            if key not in bboxes:
+                bboxes[key] = full_bbox
+                print(f"Missing '{key}' in provided bboxes. Using unlimited bounds.")
     
-    elif scan_type == 'sim':
-        if side == 'right':
-            bboxes['inner_bar'] =       [-NO_LIMIT,      -26, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]  
-            bboxes['spindle_coarse'] =  [       22, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT] 
-        elif side == 'left':
-            bboxes['inner_bar'] =       [       25, NO_LIMIT, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
-            bboxes['spindle_coarse'] =  [-NO_LIMIT,     -150, -NO_LIMIT, NO_LIMIT, -NO_LIMIT, NO_LIMIT]
-    
-    # load scan data into Crank_Arm_ASSY_LJS640 object
-
+    # Load scan data into Crank_Arm_ASSY_LJS640 object
     start = time.time()
     scan1 = Crank_Arm_ASSY_LJS640(filename, inner_bar_view_angle_x=45, scan_type=scan_type, side=side,
                                   bbox=bboxes['raw_trim'], ui=ui, debug_flag=debug_flag) 
 
-    # oriented point cloud as it would be on a trailer
+    # Oriented point cloud as it would be on a trailer
+    scan1.center_cloud_xy()  # Shift trimmed point cloud to XY center for consistency
+    if rotations_list:
+        for rot in rotations_list:
+            scan1.rotate_cloud(axis=rot['axis'], angle=rot['angle'])
+    else:
+        if scan_type == 'real':
+            if side == 'right':
+                scan1.rotate_cloud(axis='z', angle=180)
+                scan1.rotate_cloud(axis='x', angle=180)
+            if side == 'left':
+                scan1.rotate_cloud(axis='z', angle=0)
+                scan1.rotate_cloud(axis='x', angle=90+180)
+        
+        elif scan_type == 'sim':
+            if side == 'right':
+                scan1.rotate_cloud(axis='x', angle=90)
+                scan1.rotate_cloud(axis='y', angle=0.3)
+                scan1.rotate_cloud(axis='x', angle=0.3)
+                scan1.rotate_cloud(axis='z', angle=0.3)
+            elif side == 'left':
+                scan1.rotate_cloud(axis='x', angle=90)
+                scan1.rotate_cloud(axis='z', angle=180)
+                scan1.rotate_cloud(axis='y', angle=1.2)
+                scan1.rotate_cloud(axis='x', angle=0.5)
+                scan1.rotate_cloud(axis='z', angle=0.1)
 
-    scan1.center_cloud_xy() # shift trimmed point cloud to XY center for consistency
-    if scan_type == 'real':
-        if side == 'right':
-            scan1.rotate_cloud(axis='z', angle=180)
-            scan1.rotate_cloud(axis='x', angle=180)
-        if side == 'left':
-            scan1.rotate_cloud(axis='z', angle=0); scan1.rotate_cloud(axis='x', angle=90+180)
-    
-    elif scan_type == 'sim':
-        if side == 'right':
-            scan1.rotate_cloud(axis='x', angle=90)
-            scan1.rotate_cloud(axis='y', angle=0.3); scan1.rotate_cloud(axis='x', angle=0.3); scan1.rotate_cloud(axis='z', angle=0.3)
-        elif side == 'left':
-            scan1.rotate_cloud(axis='x', angle=90); scan1.rotate_cloud(axis='z', angle=180)
-            scan1.rotate_cloud(axis='y', angle=1.2); scan1.rotate_cloud(axis='x', angle=0.5); scan1.rotate_cloud(axis='z', angle=0.1)
-
-    scan1.center_cloud() # shift trimmed and oriented scan's centroid to the origin
+    scan1.center_cloud()  # Shift trimmed and oriented scan's centroid to the origin
     if debug_flag:
-        print('Showing oriented scan. User verify orientation with trailer axes...'); scan1.show_cloud()
+        print('Showing oriented scan. User verify orientation with trailer axes...')
+        scan1.show_cloud()
 
     # Fit axes to bar and spindle
     scan1.fit_bar_faces(plotNum=0, cutoff=bboxes['inner_bar'], show_flag=debug_flag, num_points=1000)
@@ -71,7 +87,7 @@ def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=Fals
     scan1.calc_toe_camber()
     scan1.print_angles()    
     scan1.save_angles_to_csv()
-    if debug_flag: scan1.plot_unit_vectors()
+    # if debug_flag: scan1.plot_unit_vectors()
 
     end = time.time()
     print(f'\nTotal Duration: {end-start:.3f}')
@@ -83,5 +99,5 @@ def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=Fals
     return results
 
 if __name__ == "__main__":
-    main(filename=r"C:\Users\LJSTe\Desktop\BYU Repository\BYUCapstone-Dexter-Keyence\RealScans\1234.csv", side='left', scan_type='real', debug_flag=True)
+    main(filename=r"Scan_Data/Matt_test_arm.csv", side='left', scan_type='real', debug_flag=True)
  

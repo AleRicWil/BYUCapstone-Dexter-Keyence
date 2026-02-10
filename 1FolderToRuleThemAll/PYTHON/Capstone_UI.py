@@ -4,9 +4,11 @@ import pandas as pd
 import numpy as np
 import time
 import os
+import json
+import csv
 import threading
 import queue
-from datetime import date
+from datetime import date, datetime
 from reportlab.pdfgen import canvas
 import webbrowser
 import Measure_Hub as MH  
@@ -30,7 +32,13 @@ class Dexter_Capstone_UI:
         self.arm_database_path = r"C:\Users\Public\CapstoneUI\Arm_Database.csv"
         self.calibration_path = r"C:\Users\Public\CapstoneUI\Calibration History.csv"
         self.temp_scan_pathA = r'C:\Users\Public\CapstoneUI\temporary_scan.csv'
+        self.json_path = r"C:\Users\Public\CapstoneUI\arm_types.json"
+        self.arm_types = {}
+        self.load_arm_types()
+        self.selected_arm_type = None
         self.get_hub_calibration()
+
+        self.debug_flag = True
         
         # Create a persistent frame for the message log at the bottom
         self.log_frame = ctk.CTkFrame(self.master)
@@ -43,6 +51,40 @@ class Dexter_Capstone_UI:
         self.content_frame.pack(fill=ctk.BOTH, expand=True, padx=20, pady=(20, 0))
         
         self.open_home_screen()
+
+    def load_arm_types(self):
+        if os.path.exists(self.json_path):
+            try:
+                with open(self.json_path, 'r') as f:
+                    loaded = json.load(f)
+                    self.arm_types = {}
+                    for k, v in loaded.items():
+                        self.arm_types[k] = v
+            except:
+                print('No valid arm types in .json file')
+                self.arm_types = {}
+        else:
+            self.arm_types = {}
+
+    def get_default_rotations(self):
+        return {
+            'left': [{'axis': 'z', 'angle': 0}, {'axis': 'x', 'angle': 270}],
+            'right': [{'axis': 'z', 'angle': 180}, {'axis': 'x', 'angle': 180}]
+        }
+
+    def parse_rotations(self, s):
+        rots = []
+        for p in s.split(','):
+            p = p.strip()
+            if p:
+                axis, angle_str = p.split(':')
+                rots.append({'axis': axis.strip(), 'angle': float(angle_str.strip())})
+        return rots
+
+    def save_arm_types(self):
+        os.makedirs(os.path.dirname(self.json_path), exist_ok=True)
+        with open(self.json_path, 'w') as f:
+            json.dump(self.arm_types, f, indent=4)
 
     def clear_window(self):
         """Remove all widgets from the content frame and unbind the Return key."""
@@ -105,6 +147,9 @@ class Dexter_Capstone_UI:
 
     # General
     def run_scanner(self):
+        if self.scan_type != 'real':
+            messagebox.showerror("Error", "Scanning is only available for 'real' scan types.")
+            return
         def content(frame):
             ctk.CTkLabel(frame, text="Scanning...", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
         if self.type == 'hub':
@@ -118,10 +163,9 @@ class Dexter_Capstone_UI:
             i = (i - 2**15) * .0102
 
         if self.type == 'arm':
-            self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}.csv'
+            self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}\{self.selected_arm_type}_{datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv'
         np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
         
-        self.scan_type = 'real'
         if self.type == 'hub':
             self.hub_scan_fileA = self.temp_scan_pathA
             self.calc_hub_alignment()
@@ -185,14 +229,13 @@ class Dexter_Capstone_UI:
     
     def validate_file_and_start(self):
         scan_file = self.existing_scan_entry.get().strip()
-        self.scan_type = 'real'
         if not scan_file or not os.path.isfile(scan_file):
             messagebox.showerror("Error", "Please enter a valid and accessible file path.")
             return
         if self.type == 'hub':
             self.hub_scan_fileA = scan_file
             self.calc_hub_alignment()
-        elif self.type == 'arm':
+        elif self.type =='arm':
             self.arm_scan_fileA = scan_file
             self.calc_arm_alignment()
 
@@ -255,18 +298,17 @@ class Dexter_Capstone_UI:
                 return
 
             os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
-            self.initialize_csv(self.arm_database_path, ["Arm ID", "Bar Toe", "Bar Camber",
-                                                          "Spindle Toe", "Spindle Camber",
-                                                          "Toe", "Camber",
-                                                            "Total Relative Angle", "Date Scanned"])
+            self.initialize_csv(self.arm_database_path, ["Arm ID", "Arm Type", "Toe (deg)", "Camber (deg)",
+                                                    "Bar Toe (deg)", "Bar Camber (deg)", "Spindle Toe (deg)", "Spindle Camber (deg)",
+                                                    "Total Relative Angle (deg)", "Date Scanned (yyyy-mm-dd_hhmmss)"])
             df = pd.read_csv(self.arm_database_path, dtype=str)
             if self.arm_id not in df["Arm ID"].values:
                 pd.concat([df, pd.DataFrame([{"Arm ID": self.arm_id}])], ignore_index=True).to_csv(self.arm_database_path, index=False)
                 self.update_status(f"Arm ID {self.arm_id} added to database.")
             else:
-                self.update_status(f"Arm ID {self.arm_id} already exists.")
+                self.update_status(f"Arm ID {self.arm_id} already exists. Will ask to overwrite after measurement.")
 
-            self.show_arm_scan_screen()
+            self.show_arm_type_selection()
 
         def content(frame):
             self.barcode_entry = ctk.CTkEntry(frame, placeholder_text="Enter Arm Identifier", width=self.default_button_size)
@@ -331,7 +373,8 @@ class Dexter_Capstone_UI:
         self.auto_flag = self.auto_mode_switch.get() == 0
 
     def update_debug_mode(self):
-        self.debug_flag = self.debug_mode_switch.get() != 0
+        self.debug_flag = self.debug_mode_switch.get() == 0
+        print(self.debug_flag)
 
     def update_side(self):
         if self.side_switch.get() == 0:
@@ -414,50 +457,192 @@ class Dexter_Capstone_UI:
 
 
     # Measure arm
+    def show_arm_type_selection(self):
+        self.load_arm_types()
+        def content(frame):
+            ctk.CTkLabel(frame, text="Select Arm Type", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
+            values = sorted(list(self.arm_types.keys())) + ["Create New..."]
+            self.arm_type_combo = ctk.CTkComboBox(frame, values=values, width=self.default_button_size)
+            self.arm_type_combo.pack(pady=(0, 20))
+            ctk.CTkButton(frame, text="Next", command=self.handle_arm_type_selection, width=self.default_button_size).pack(pady=(0, 20))
+
+        self.setup_screen("TorFlex Axle — Select Arm Type", content)
+
+    def handle_arm_type_selection(self):
+        selected = self.arm_type_combo.get()
+        if selected == "Create New...":
+            self.open_create_arm_type()
+        else:
+            parts = selected.split('_')
+            if len(parts) < 3:
+                messagebox.showerror("Error", "Invalid arm type name format.")
+                return
+            arm_name = '_'.join(parts[:-2])  # Allow for names with underscores
+            self.side = parts[-2].lower()
+            self.scan_type = parts[-1].lower()
+            if self.side not in ['left', 'right'] or self.scan_type not in ['real', 'sim']:
+                messagebox.showerror("Error", "Invalid side or scan type in arm type name.")
+                return
+            self.selected_arm_type = selected
+            self.show_arm_scan_screen()
+
+    def open_create_arm_type(self):
+        def content(frame):
+            # Create a scrollable frame to hold all content, ensuring accessibility
+            # regardless of window size. This prevents overflow and hidden elements
+            # by allowing vertical scrolling when needed. We set it to fill and expand
+            # to utilize the available space efficiently, improving usability on
+            # smaller screens or with many bounding box entries.
+            scrollable_frame = ctk.CTkScrollableFrame(frame)
+            scrollable_frame.pack(fill=ctk.BOTH, expand=True, pady=(0, 20))
+            
+            ctk.CTkLabel(scrollable_frame, text="Create New Arm Type", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
+            
+            self.new_arm_name_entry = ctk.CTkEntry(scrollable_frame, placeholder_text="Arm Type Name (e.g., Standard)", width=self.default_button_size)
+            self.new_arm_name_entry.pack(pady=(0, 10))
+            
+            self.new_side_combo = ctk.CTkComboBox(scrollable_frame, values=["right", "left"], width=self.default_button_size)
+            self.new_side_combo.pack(pady=(0, 10))
+            
+            self.new_scan_type_combo = ctk.CTkComboBox(scrollable_frame, values=["real", "sim"], width=self.default_button_size)
+            self.new_scan_type_combo.pack(pady=(0, 10))
+            
+            self.bbox_entries = {}
+            bbox_keys = ["raw_trim", "inner_bar", "spindle_coarse", "spindle_fine"]
+            coords = ['x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max']
+            default_vals = ['-NO_LIMIT', 'NO_LIMIT', '-NO_LIMIT', 'NO_LIMIT', '-NO_LIMIT', 'NO_LIMIT']
+            
+            for key in bbox_keys:
+                bbox_frame = ctk.CTkFrame(scrollable_frame)
+                bbox_frame.pack(pady=(20, 0), fill=ctk.X)
+                ctk.CTkLabel(bbox_frame, text=f"{key} Bounding Box:", font=ctk.CTkFont(weight="bold")).pack(anchor="w")
+                coord_frame = ctk.CTkFrame(bbox_frame)
+                coord_frame.pack(fill=ctk.X)
+                self.bbox_entries[key] = {}
+                for i, coord in enumerate(coords):
+                    sub_frame = ctk.CTkFrame(coord_frame)
+                    sub_frame.pack(side=ctk.LEFT, padx=5, expand=True, fill=ctk.X)
+                    ctk.CTkLabel(sub_frame, text=coord).pack(anchor="w")
+                    entry = ctk.CTkEntry(sub_frame, width=100)
+                    entry.insert(0, default_vals[i])
+                    entry.pack()
+                    self.bbox_entries[key][coord] = entry
+
+            self.rotation_entries = {}
+            rotation_keys = ['Set 1', 'Set 2', 'Set 3']
+            axes = ['X', 'Y', 'Z']
+            default_vals = [0, 0, 0]
+
+            for key in rotation_keys:
+                rotation_frame = ctk.CTkFrame(scrollable_frame)
+                rotation_frame.pack(pady=(20, 0), fill=ctk.X)
+                ctk.CTkLabel(rotation_frame, text=f"{key} Rotations", font = ctk.CTkFont(weight='bold')).pack(anchor='w')
+                axes_frame = ctk.CTkFrame(rotation_frame)
+                axes_frame.pack(fill=ctk.X)
+                self.rotation_entries[key] = {}
+                for i, axis in enumerate(axes):
+                    sub_frame = ctk.CTkFrame(axes_frame)
+                    sub_frame.pack(side=ctk.LEFT, padx=5, expand=True, fill=ctk.X)
+                    ctk.CTkLabel(sub_frame, text=axis).pack(anchor='w')
+                    entry = ctk.CTkEntry(sub_frame, width=100)
+                    entry.insert(0, default_vals[i])
+                    entry.pack()
+                    self.rotation_entries[key][axis] = entry
+            
+            ctk.CTkButton(scrollable_frame, text="Save", command=self.save_new_arm_type, width=self.default_button_size).pack(pady=(20, 0))
+
+        self.setup_screen("TorFlex Axle — Create New Arm Type", content)
+
+    def save_new_arm_type(self):
+        name = self.new_arm_name_entry.get().strip()
+        side = self.new_side_combo.get()
+        scan_type = self.new_scan_type_combo.get()
+        if not name or not side or not scan_type:
+            messagebox.showerror("Error", "Please fill all fields.")
+            return
+        
+        key = f"{name}_{side}_{scan_type}"
+        if key in self.arm_types:
+            messagebox.showerror("Error", "Arm type already exists.")
+            return
+        
+        bboxes = {}
+        coords = ['x_min', 'x_max', 'y_min', 'y_max', 'z_min', 'z_max']
+        try:
+            for bbox_key in self.bbox_entries:
+                vals = []
+                for coord in coords:
+                    v = self.bbox_entries[bbox_key][coord].get().strip()
+                    if v == 'NO_LIMIT':
+                        vals.append(2000.0)
+                    elif v == '-NO_LIMIT':
+                        vals.append(-2000.0)
+                    else:
+                        vals.append(float(v))
+                bboxes[bbox_key] = vals
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid bbox value: {e}. Use numbers or ±NO_LIMIT.")
+            return
+        
+        rotations = {}
+        axes = ['X', 'Y', 'Z']
+        try:
+            for set_key in self.rotation_entries:
+                vals = []
+                for axis in axes:
+                    v = self.rotation_entries[set_key][axis].get().strip()
+                    vals.append(float(v))
+                rotations[set_key] = vals
+        except ValueError as e:
+            messagebox.showerror("Error", f'Invalid rotation value: {e}.')
+        
+        full_dict = {'bboxes': bboxes, 'rotations': rotations}
+
+        self.arm_types[key] = full_dict
+        self.save_arm_types()
+        self.update_status(f"New arm type '{key}' saved.")
+        self.selected_arm_type = key
+        self.side = side
+        self.scan_type = scan_type
+        self.show_arm_scan_screen()
+
     def show_arm_scan_screen(self):
         def content(frame):
             ctk.CTkLabel(frame, text=f"Arm ID: {self.arm_id}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
-            # ctk.CTkLabel(frame, text=f"Last calibrated: {self.calibration_date}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
-
-            ctk.CTkButton(frame, text="Start Scanner", command=self.run_scanner, width=200).pack(pady=(40, 0))
-            repeated_frame = ctk.CTkFrame(frame)
-            repeated_frame.pack(pady=(40, 0))
-
-            ctk.CTkButton(repeated_frame, text="Repeated Scan", command=self.validate_number, width=200).pack(side=ctk.LEFT, padx=(0, 10))
-            self.num_scans = ctk.CTkEntry(repeated_frame, placeholder_text="enter number of scans", width=300)
-            self.num_scans.pack(side=ctk.LEFT)
+            # Removed: Last calibrated (not relevant here)
+            if self.scan_type == 'real':
+                ctk.CTkButton(frame, text="Start Scanner", command=self.run_scanner, width=200).pack(pady=(40, 0))
+            else:
+                ctk.CTkLabel(frame, text="Simulation mode: Use existing scan file.", font=ctk.CTkFont(size=18)).pack(pady=(20, 0))
             scan_frame = ctk.CTkFrame(frame)
             scan_frame.pack(pady=(40, 0))
-
             ctk.CTkButton(scan_frame, text="Measure from existing scan:", command=self.validate_file_and_start, width=200).pack(side=ctk.LEFT, padx=(0, 10))
             self.existing_scan_entry = ctk.CTkEntry(scan_frame, placeholder_text="enter scan file path", width=300)
             self.existing_scan_entry.pack(side=ctk.LEFT)
             mode_frame = ctk.CTkFrame(frame)
             mode_frame.pack(pady=(20, 0))
-
             ctk.CTkLabel(mode_frame, text="Debug Mode:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))
-            self.debug_mode_switch = ctk.CTkSwitch(mode_frame, text="Off/On", command=self.update_debug_mode)
+            self.debug_mode_switch = ctk.CTkSwitch(mode_frame, text="Debug/Auto", command=self.update_debug_mode)
             self.debug_mode_switch.pack(side=ctk.LEFT)
-            self.debug_flag = self.debug_mode_switch.get() != 0
-
-            ctk.CTkLabel(mode_frame, text="Arm Side:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))
-            self.side_switch = ctk.CTkSwitch(mode_frame, text="Left/Right", command=self.update_side)
-            self.side_switch.pack(side=ctk.LEFT)
-            if self.side_switch.get() == 0:
-                self.side = 'left'
-            else:
-                self.side = 'right'
-
-            # ctk.CTkLabel(mode_frame, text="Manual Mode:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))
-            # self.auto_mode_switch = ctk.CTkSwitch(mode_frame, text="Auto/Manual", command=self.update_auto_mode)
-            # self.auto_mode_switch.pack(side=ctk.LEFT)
-            # self.auto_flag = self.auto_mode_switch.get() == 0
-
+            self.debug_flag = self.debug_mode_switch.get() == 0
+            # Removed: side_switch
+            # Removed: debug_switch (assuming kept if present, but not in truncated)
             ctk.CTkButton(frame, text="Back", command=self.measure_arm, width=200).pack(pady=(40, 0))
-            self.master.bind("<Return>", lambda event: self.run_scanner())
-        self.setup_screen("TorFlex Axle — Measure Crank Arm Alignment", content)
+            self.master.bind("<Return>", lambda event: self.run_scanner() if self.scan_type == 'real' else None)
+        self.setup_screen("TorFlex Axle — Measure Arm Alignment", content)
 
     def calc_arm_alignment(self):
+        if self.selected_arm_type is None:
+            messagebox.showerror("Error", "No arm type selected.")
+            return
+        arm_type_data = self.arm_types.get(self.selected_arm_type)
+        if arm_type_data is None:
+            messagebox.showerror("Error", "Selected arm type not found in database.")
+            return
+        bboxes = arm_type_data.get('bboxes', {})
+        rotations = arm_type_data.get('rotations', [])
+        if isinstance(rotations, dict):  # Old format with per-side rotations
+            rotations = rotations.get(self.side, [])
         def content(frame):
             ctk.CTkLabel(frame, text='Calculating crank arm alignment...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
         self.setup_screen('Processing Data', content, home_button=False)
@@ -465,32 +650,50 @@ class Dexter_Capstone_UI:
 
         def compute_alignment():
             try:
-                # self.get_arm_calibration()
-                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self, debug_flag=self.debug_flag)
-                # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
-                if isinstance(scan_results, dict) and isinstance(scan_results, dict):
-
+                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self, debug_flag=self.debug_flag, bboxes_dict=bboxes, rotations_list=rotations)
+                if isinstance(scan_results, dict):
+                    self.bar_toe = scan_results.get("bar_toe", "N/A")
+                    self.bar_camber = scan_results.get("bar_camber", "N/A")
+                    self.spindle_toe = scan_results.get("spindle_toe", "N/A")
+                    self.spindle_camber = scan_results.get("spindle_camber", "N/A")
                     self.toe = scan_results.get("toe", "N/A")
                     self.camber = scan_results.get("camber", "N/A")
                     self.total_angle = scan_results.get("total_misalign", "N/A")
-
                     self.master.after(0, self.show_arm_results)
                 else:
                     self.master.after(0, lambda: messagebox.showerror("Error", "Invalid scan results"))
             except Exception as e:
                 self.master.after(0, lambda e=e: messagebox.showerror("Error", f"Scan failed: {e}"))
 
-        # Keep UI responsive by scheduling periodic updates
+        # Local function to keep UI responsive during computation
+        # This periodically updates the Tkinter main loop to process events,
+        # preventing the UI from freezing while the background thread runs.
+        # It checks if threads are still active to avoid unnecessary scheduling,
+        # promoting efficiency in a production environment where UI responsiveness
+        # impacts user experience on the production floor.
         def update_ui():
             self.master.update()
             if threading.active_count() > 1:  # Check if background thread is still running
-                self.master.after(10, update_ui)  # Schedule next update in 10ms
+                self.master.after(10, update_ui)  # Schedule next update in 10ms for smooth responsiveness
 
-        # Start computation in a background thread
+        # Start computation in a background thread to avoid blocking the UI,
+        # ensuring the application remains interactive during potentially long-running
+        # alignment calculations, which is critical for efficiency in quality control processes.
         threading.Thread(target=compute_alignment, daemon=True).start()
         self.master.after(100, update_ui)
 
     def calc_repeated_arm_alignment(self, scan_text):
+        if self.selected_arm_type is None:
+            messagebox.showerror("Error", "No arm type selected.")
+            return
+        arm_type_data = self.arm_types.get(self.selected_arm_type)
+        if arm_type_data is None:
+            messagebox.showerror("Error", "Selected arm type not found in database.")
+            return
+        bboxes = arm_type_data.get('bboxes', {})
+        rotations = arm_type_data.get('rotations', [])
+        if isinstance(rotations, dict):  # Old format with per-side rotations
+            rotations = rotations.get(self.side, [])
         def content(frame):
             ctk.CTkLabel(frame, text=f'Calculating crank arm alignment for arm {scan_text}...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
         self.setup_screen('Processing Data', content, home_button=False)
@@ -498,15 +701,12 @@ class Dexter_Capstone_UI:
 
         def compute_alignment():
             try:
-                # self.get_arm_calibration()
-                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self)
-                # scan_resultsR = MH.main(self.calibrationR, self.hub_scan_fileA, self.auto_flag, self.scan_type, ui=self)
-                if isinstance(scan_results, dict) and isinstance(scan_results, dict):
-
+                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self, bboxes_dict=bboxes, rotations_list=rotations)
+                if isinstance(scan_results, dict):
                     self.bar_toe = scan_results.get("bar_toe", "N/A")
                     self.bar_camber = scan_results.get("bar_camber", "N/A")
                     self.spindle_toe = scan_results.get("spindle_toe", "N/A")
-                    self.spindle_camber = scan_results.get("spindle_toe", "N/A")
+                    self.spindle_camber = scan_results.get("spindle_camber", "N/A")
                     self.toe = scan_results.get("toe", "N/A")
                     self.camber = scan_results.get("camber", "N/A")
                     self.total_angle = scan_results.get("total_misalign", "N/A")
@@ -529,45 +729,31 @@ class Dexter_Capstone_UI:
                 self.master.after(0, lambda e=e: messagebox.showerror("Error", f"Scan failed: {e}"))
 
         compute_alignment()
-
-        # Keep UI responsive by scheduling periodic updates
-        # def update_ui():
-        #     self.master.update()
-        #     if threading.active_count() > 1:  # Check if background thread is still running
-        #         self.master.after(10, update_ui)  # Schedule next update in 10ms
-
-        # # Start computation in a background thread
-        # threading.Thread(target=compute_alignment, daemon=True).start()
-        # self.master.after(100, update_ui)
     
     def show_arm_results(self):
         def content(frame):
-            # try:
-            #     self.save_arm_results()
-            #     self.print_arm_results()
-            # except Exception as e:
-            #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
-            ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
-            ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-            results = (f'Total Toe:\t{self.toe:.2f}°\nTotal Camber:\t{self.camber:.2f}°\nTotal Angle:\t{self.total_angle:.4f}°')
-            ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
-            ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
-            ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
-            self.master.bind("<Return>", lambda event: self.measure_arm())
+            try:
+                ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
+                ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
+                results = (f'Total Toe:\t{self.toe:.2f}°\nTotal Camber:\t{self.camber:.2f}°\nTotal Angle:\t{self.total_angle:.4f}°')
+                ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
+                ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
+                ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'debug_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
+                self.master.bind("<Return>", lambda event: self.measure_arm())
+                self.save_arm_results()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save or print results: {e}")
+        
         self.setup_screen("Results", content)
 
     def show_repeated_arm_results(self, scan_text):
         def content(frame):
-            # try:
-            #     self.print_arm_results()
-            # except Exception as e:
-            #     messagebox.showerror("Error", f"Failed to save or print results: {e}")
             ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
             ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
             results = (f'Average Toe:\t{self.toe_avg:.4f}° ± {self.toe_std:.4f}\nAverage Camber:\t{self.camber_avg:.4f} ± {self.camber_std:.4f}°\nAverage Total Angle:\t{self.total_angle_avg:.4f}° ± {self.total_angle_std:.4f}')
             ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="center", anchor="w").pack(pady=(20, 10))
             ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
-            ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'auto_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
+            ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'debug_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))
             self.master.bind("<Return>", lambda event: self.measure_arm())
 
         self.toe_avg = np.mean(self.toe_arr)
@@ -582,15 +768,54 @@ class Dexter_Capstone_UI:
         self.setup_screen("Results", content)
 
     def save_arm_results(self):
-        df = pd.read_csv(self.arm_database_path, dtype=str)
-        df.loc[df["Arm ID"] == self.arm_id, ["Bar Toe", "Bar Camber",
-                                            "Spindle Toe", "Spindle Camber",
-                                            "Toe", "Camber",
-                                            "Total Relative Angle", "Date Scanned"]] = [self.bar_toe, self.bar_camber,
-                                                                                            self.spindle_toe, self.spindle_camber,
-                                                                                            self.toe, self.camber,
-                                                                                            self.total_angle, date.today()]
-        df.to_csv(self.arm_database_path, index=False)
+        os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
+        self.initialize_csv(self.arm_database_path, ["Arm ID", "Arm Type", "Toe (deg)", "Camber (deg)",
+                                                    "Bar Toe (deg)", "Bar Camber (deg)", "Spindle Toe (deg)", "Spindle Camber (deg)",
+                                                    "Total Relative Angle (deg)", "Date Scanned (yyyy-mm-dd_hhmmss)"])
+        print(self.selected_arm_type)
+        
+        rows = []
+        with open(self.arm_database_path, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                print(row)
+                rows.append(row)
+        
+        exists = any(row['Arm ID'] == self.arm_id for row in rows)
+        
+        # Prepare the new row
+        print('no duplicate or overwrite was selected')
+        new_row = {
+            "Arm ID": self.arm_id,
+            "Arm Type": self.selected_arm_type,
+            "Toe": self.toe,
+            "Camber": self.camber,
+            "Bar Toe": self.bar_toe,
+            "Bar Camber": self.bar_camber,
+            "Spindle Toe": self.spindle_toe,
+            "Spindle Camber": self.spindle_camber,
+            "Total Relative Angle": self.total_angle,
+            "Date Scanned": datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        }
+        
+        if exists:
+            # Update existing row
+            for row in rows:
+                if row['Arm ID'] == self.arm_id:
+                    row.update(new_row)
+                    break
+        else:
+            # Append new row
+            rows.append(new_row)
+        
+        # Write back to CSV
+        with open(self.arm_database_path, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=["Arm ID", "Arm Type", "Toe", "Camber",
+                                                "Bar Toe", "Bar Camber", "Spindle Toe", "Spindle Camber",
+                                                "Total Relative Angle", "Date Scanned"])
+            writer.writeheader()
+            writer.writerows(rows)
+        
         self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
 
     def save_repeated_arm_results(self, scan_text):
@@ -612,19 +837,6 @@ class Dexter_Capstone_UI:
                                                                                             self.total_angle_avg, date.today()]
         df.to_csv(self.arm_database_path, index=False)
         self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
-
-    def print_arm_results(self):
-        pdf_path = os.path.join(r"C:\Users\Public\CapstoneUI", f"{self.arm_id}.pdf")
-        os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-        c = canvas.Canvas(pdf_path, pagesize=(2 * 144, 1 * 72))
-        c.setFont("Courier", 8)
-        text = c.beginText(0.25 * 72, 0.85 * 72)
-        text.setLeading(10)
-        for line in [f"Arm ID: {self.arm_id}", f"Total Camber: {self.relative_X_angle:.4f}°, Total Toe: {self.relative_Z_angle:.4f}°"]:
-            text.textLine(line)
-        c.drawText(text)
-        c.save()
-        #webbrowser.open(pdf_path)
 
 
     # Calibrate hub
