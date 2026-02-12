@@ -39,6 +39,7 @@ class Dexter_Capstone_UI:
         self.get_hub_calibration()
 
         self.debug_flag = True
+        self.test_num = '00'
         
         # Create a persistent frame for the message log at the bottom
         self.log_frame = ctk.CTkFrame(self.master)
@@ -162,10 +163,21 @@ class Dexter_Capstone_UI:
         for i in data:
             i = (i - 2**15) * .0102
 
-        if self.type == 'arm':
-            self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}\{self.selected_arm_type}_{datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv'
-        np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
+        # if self.type == 'arm':
+        #     self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}\{self.selected_arm_type}_{datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv'
+        # np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
         
+        # new block to save multiple scans of the same arm ID, adding user-provided test_num to filename
+        if self.type == 'arm':
+            self.test_num = self.test_num_combo.get() if hasattr(self, 'test_num_combo') else ''
+            if self.test_num and self.test_num != 'None: 00':  # Optional: add more validation, e.g., if not test_num.isdigit(): messagebox.showerror("Error", "Test # must be a number."); return
+                filename = f"{self.selected_arm_type}_{self.test_num}_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.csv"
+            else:
+                filename = f"{self.selected_arm_type}_00_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.csv"
+            
+            self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}\{filename}'
+            os.makedirs(os.path.dirname(self.temp_scan_pathA), exist_ok=True)  # Ensures the directory exists before saving
+
         if self.type == 'hub':
             self.hub_scan_fileA = self.temp_scan_pathA
             self.calc_hub_alignment()
@@ -237,6 +249,10 @@ class Dexter_Capstone_UI:
             self.calc_hub_alignment()
         elif self.type =='arm':
             self.arm_scan_fileA = scan_file
+            test_num = self.test_num_combo.get() if hasattr(self, 'test_num_combo') else '00'
+            if test_num == 'None: 00':
+                test_num = '00'
+            self.test_num = test_num
             self.calc_arm_alignment()
 
     def validate_number(self):
@@ -298,7 +314,7 @@ class Dexter_Capstone_UI:
                 return
 
             os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
-            self.initialize_csv(self.arm_database_path, ["Arm ID", "Arm Type", "Toe (deg)", "Camber (deg)",
+            self.initialize_csv(self.arm_database_path, ["Arm ID", "Test #", "Arm Type", "Toe (deg)", "Camber (deg)",
                                                     "Bar Toe (deg)", "Bar Camber (deg)", "Spindle Toe (deg)", "Spindle Camber (deg)",
                                                     "Total Relative Angle (deg)", "Date Scanned (yyyy-mm-dd_hhmmss)"])
             df = pd.read_csv(self.arm_database_path, dtype=str)
@@ -352,7 +368,6 @@ class Dexter_Capstone_UI:
     def show_hub_scan_screen(self):
         def content(frame):
             ctk.CTkLabel(frame, text=f"Axle ID: {self.axle_id}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
-            ctk.CTkLabel(frame, text=f"Last calibrated: {self.calibration_date}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
             ctk.CTkButton(frame, text="Start Scanner", command=self.run_scanner, width=200).pack(pady=(40, 0))
             scan_frame = ctk.CTkFrame(frame)
             scan_frame.pack(pady=(40, 0))
@@ -609,7 +624,11 @@ class Dexter_Capstone_UI:
     def show_arm_scan_screen(self):
         def content(frame):
             ctk.CTkLabel(frame, text=f"Arm ID: {self.arm_id}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
-            # Removed: Last calibrated (not relevant here)
+            test_nums = [f"{i:02d}" for i in range(1, 100)]  # Generates ['01', '02', ..., '99']
+            test_nums.insert(0, 'None: 00')
+            self.test_num_combo = ctk.CTkComboBox(frame, values=test_nums, width=200)
+            self.test_num_combo.pack(pady=(40, 0))
+            self.test_num_combo.set('None: 00')  # Optional: Set default to '01' for convenience
             if self.scan_type == 'real':
                 ctk.CTkButton(frame, text="Start Scanner", command=self.run_scanner, width=200).pack(pady=(40, 0))
             else:
@@ -769,10 +788,10 @@ class Dexter_Capstone_UI:
 
     def save_arm_results(self):
         os.makedirs(os.path.dirname(self.arm_database_path), exist_ok=True)
-        self.initialize_csv(self.arm_database_path, ["Arm ID", "Arm Type", "Toe (deg)", "Camber (deg)",
+        self.initialize_csv(self.arm_database_path, ["Arm ID", "Test #", "Arm Type", "Toe (deg)", "Camber (deg)",
                                                     "Bar Toe (deg)", "Bar Camber (deg)", "Spindle Toe (deg)", "Spindle Camber (deg)",
                                                     "Total Relative Angle (deg)", "Date Scanned (yyyy-mm-dd_hhmmss)"])
-        print(self.selected_arm_type)
+        print('Arm Type Selected: ', self.selected_arm_type)
         
         rows = []
         with open(self.arm_database_path, 'r', newline='') as f:
@@ -781,42 +800,48 @@ class Dexter_Capstone_UI:
                 print(row)
                 rows.append(row)
         
-        exists = any(row['Arm ID'] == self.arm_id for row in rows)
+        exists = False
+        for row in rows:
+            if row.get('Arm ID') == self.arm_id and row.get('Test #') == self.test_num:
+                exists = True
+                break  # Found match; will update this row below
         
-        # Prepare the new row
-        print('no duplicate or overwrite was selected')
+        # Prepare the new/updated row with all fields, including Test Num
         new_row = {
             "Arm ID": self.arm_id,
+            "Test #": self.test_num,
             "Arm Type": self.selected_arm_type,
-            "Toe": self.toe,
-            "Camber": self.camber,
-            "Bar Toe": self.bar_toe,
-            "Bar Camber": self.bar_camber,
-            "Spindle Toe": self.spindle_toe,
-            "Spindle Camber": self.spindle_camber,
-            "Total Relative Angle": self.total_angle,
-            "Date Scanned": datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            "Toe (deg)": self.toe,
+            "Camber (deg)": self.camber,
+            "Bar Toe (deg)": self.bar_toe,
+            "Bar Camber (deg)": self.bar_camber,
+            "Spindle Toe (deg)": self.spindle_toe,
+            "Spindle Camber (deg)": self.spindle_camber,
+            "Total Relative Angle (deg)": self.total_angle,
+            "Date Scanned (yyyy-mm-dd_hhmmss)": datetime.now().strftime("%Y-%m-%d_%H%M%S")
         }
         
         if exists:
-            # Update existing row
+            # Update the matching row in-place for efficiency (avoids full rewrite if possible, but we rewrite anyway)
+            print(f'Overwriting existing row for Arm ID {self.arm_id} and Test # {self.test_num}')
             for row in rows:
-                if row['Arm ID'] == self.arm_id:
+                if row['Arm ID'] == self.arm_id and row['Test #'] == self.test_num:
                     row.update(new_row)
                     break
         else:
-            # Append new row
+            # Append new row for this test
+            print(f'Appending new row for Arm ID {self.arm_id} and Test # {self.test_num}')
             rows.append(new_row)
         
-        # Write back to CSV
+        # Write back all rows to CSV (atomic rewrite ensures data integrity)
         with open(self.arm_database_path, 'w', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=["Arm ID", "Arm Type", "Toe", "Camber",
-                                                "Bar Toe", "Bar Camber", "Spindle Toe", "Spindle Camber",
-                                                "Total Relative Angle", "Date Scanned"])
+            writer = csv.DictWriter(f, fieldnames=["Arm ID", "Test #", "Arm Type", "Toe (deg)", "Camber (deg)",
+                                                    "Bar Toe (deg)", "Bar Camber (deg)", "Spindle Toe (deg)", "Spindle Camber (deg)",
+                                                    "Total Relative Angle (deg)", "Date Scanned (yyyy-mm-dd_hhmmss)"])
             writer.writeheader()
             writer.writerows(rows)
         
-        self.update_status(f"Scan results saved for Arm ID {self.arm_id}")
+        self.update_status(f"Scan results saved for Arm ID {self.arm_id} (Test #: {self.test_num})")
 
     def save_repeated_arm_results(self, scan_text):
         df = pd.read_csv(self.arm_database_path, dtype=str)
