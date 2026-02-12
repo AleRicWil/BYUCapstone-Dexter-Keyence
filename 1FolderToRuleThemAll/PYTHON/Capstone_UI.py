@@ -624,11 +624,16 @@ class Dexter_Capstone_UI:
     def show_arm_scan_screen(self):
         def content(frame):
             ctk.CTkLabel(frame, text=f"Arm ID: {self.arm_id}", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
+            
+            test_frame = ctk.CTkFrame(frame)  # Sub-frame to hold label and combo side-by-side for alignment
+            test_frame.pack(pady=(40, 0))  # Pack where the combo was, maintaining vertical spacing
+            ctk.CTkLabel(test_frame, text="Test #:", font=ctk.CTkFont(size=18)).pack(side=ctk.LEFT, padx=(0, 10))  # Label to the left, with padding for spacing
             test_nums = [f"{i:02d}" for i in range(1, 100)]  # Generates ['01', '02', ..., '99']
             test_nums.insert(0, 'None: 00')
-            self.test_num_combo = ctk.CTkComboBox(frame, values=test_nums, width=200)
+            self.test_num_combo = ctk.CTkComboBox(test_frame, values=test_nums, width=200)
             self.test_num_combo.pack(pady=(40, 0))
             self.test_num_combo.set('None: 00')  # Optional: Set default to '01' for convenience
+            
             if self.scan_type == 'real':
                 ctk.CTkButton(frame, text="Start Scanner", command=self.run_scanner, width=200).pack(pady=(40, 0))
             else:
