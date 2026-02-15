@@ -759,7 +759,7 @@ class Dexter_Capstone_UI:
             try:
                 ctk.CTkLabel(frame, text="Measured Arm Alignment", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 10))
                 ctk.CTkLabel(frame, text=f'Arm ID: {self.arm_id}', font=ctk.CTkFont(size=20, weight="bold")).pack(pady=(20, 10))
-                results = (f'Total Toe:\t{self.toe:.2f}°\nTotal Camber:\t{self.camber:.2f}°\nTotal Angle:\t{self.total_angle:.4f}°')
+                results = (f'Total Toe:\t{self.toe:.3f}°\nTotal Camber:\t{self.camber:.3f}°\nTotal Angle:\t{self.total_angle:.3f}°')
                 ctk.CTkLabel(frame, text=results, font=ctk.CTkFont(size=18), justify="left", anchor="w").pack(pady=(20, 10))
                 ctk.CTkButton(frame, text="Measure another arm", command=self.measure_arm).pack(pady=(10, 20))
                 ctk.CTkButton(frame, text='Redo calculation in Manual Mode', command=lambda: [setattr(self, 'debug_flag', False), self.calc_arm_alignment()]).pack(pady=(10, 20))

@@ -1629,7 +1629,7 @@ class Crank_Arm_ASSY_LJS640:
         if debug_flag: 
             print(f'Second rotation bar axis: {self.bar_axis}')
             print(f'Second rotation bar faces: {rot_bar_primary_nomal}, {rot_bar_secondary_nomal}')
-            print(np.degrees(theta_x1), np.degrees(theta_x2))
+        print(np.degrees(theta_x1), np.degrees(theta_x2))
         
 
         if debug_flag: print("Showing scan aligned to inner bar's axis"); self.show_cloud()
@@ -1757,8 +1757,8 @@ class Crank_Arm_ASSY_LJS640:
         if self.side == 'left':
             self.toe *= -1
             self.spindle_toe *= -1
-            self.camber *= -1
-            self.spindle_camber *= -1
+            self.camber *= 1
+            self.spindle_camber *= 1
             self.bar_toe *= -1
             self.bar_camber *= -1
 
@@ -1778,8 +1778,8 @@ class Crank_Arm_ASSY_LJS640:
         print(f'Rotated Bar Axis:\t{self.bar_axis}')
         print(f'Spindle Axis:\t{self.spindle_axis}')
         np.set_printoptions(precision=4, suppress=True)
-        print(f'\n---DEGREES Toe/Camber---')
-        print(f'Bar Alignment Relative to Scanner:\t\t{self.bar_align}')
+        print(f'\n---DEGREES [Toe, Camber]---')
+        print(f'Bar Alignment Relative to Scanner:\t{self.bar_align}')
         print(f'Spindle Alignment Relative to Bar:\t{self.spindle_align}')
         print(f'Total Misalignment:\t{self.total_misalign:.4f}')
 
@@ -2248,21 +2248,27 @@ def Calc_Plane(points, title=0, plotNum=0, numPoints=1000, ui=None):
         ortho_dist = np.abs(normal_vector[0] * points[0] +
                             normal_vector[1] * points[1] +
                             normal_vector[2] * points[2] + d) / np.linalg.norm(normal_vector)
+        stddev = np.std(ortho_dist)
+        if stddev <= 0.015:
+            return points, stddev
+        
         Q1, Q3 = np.percentile(ortho_dist, [25, 75])
         IQR = Q3 - Q1
         lower_bound = Q1 - iqr_scale * IQR
         upper_bound = Q3 + iqr_scale * IQR
         filtered_points = points[:, (ortho_dist >= lower_bound) & (ortho_dist <= upper_bound)]
-        return filtered_points
+        return filtered_points, stddev
 
     filt_points = sampled_points
-    for i, iqr_scale in enumerate([1.0, 0.5]):
+    for i, iqr_scale in enumerate([1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1]):
         if ui:
             ui.log_message(f"\tIteration {i}: filtering {filt_points.shape[1]} points")
         else:
             print(f"\tIteration {i}: filtering {filt_points.shape[1]} points")
         plane, centroid = fit_plane(filt_points)
-        filt_points = filter_plane(filt_points, plane[0:3], iqr_scale)
+        filt_points, stddev = filter_plane(filt_points, plane[0:3], iqr_scale)
+        print(f'Plane stddev: {stddev}')
+        if stddev <= 0.015: break
     final_filt_points = filt_points
     if ui:
         ui.log_message(f"\tIteration {i+1}: final {final_filt_points.shape[1]} points")
