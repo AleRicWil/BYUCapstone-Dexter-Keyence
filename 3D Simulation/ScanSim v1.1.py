@@ -237,12 +237,12 @@ if __name__ == '__main__':
     # p.show()
 
     # load in stl and orient axes
-    filename = r'STLs\Crank Arm Assembly 22.5d-l_5toe_-0.5cam.STL'
-    side = 'left'
+    filename = r'STLs\Crank Arm Assembly 22.5d-r_0.5toe_0.5cam.STL'
+    side = 'right'
     myMesh = pv.read(filename)
     myMesh.translate([-myMesh.center[0], -myMesh.center[1], -myMesh.center[2]])
     if side == 'right':
-        myMesh = myMesh.rotate_x(-90).rotate_y(0).rotate_z(0)  # 180, 0, 90 for axle stl
+        myMesh = myMesh.rotate_x(-90).rotate_y(2).rotate_z(3)  # 180, 0, 90 for axle stl
     elif side == 'left':
         myMesh = myMesh.rotate_x(-90).rotate_y(180).rotate_z(0)
 
@@ -262,14 +262,14 @@ if __name__ == '__main__':
     myProfiles = []
     myTrueProfiles = []
     numPositions = 3
-    numProfiles = 1001
-    numPoints = 1001
-    railView = 30    # degrees. Angular span of rail
+    numProfiles = 2001
+    numPoints = 2001
+    # railView = 30    # degrees. Angular span of rail
     scanView = 15                                                           
-    alphas = np.linspace(railView*np.pi/180, -railView*np.pi/180, numPositions)  # horizontal angles to position scanner
+    # alphas = np.linspace(railView*np.pi/180, -railView*np.pi/180, numPositions)  # horizontal angles to position scanner
     alphas = np.array([np.radians(0)])
     betas = np.linspace(scanView*np.pi/180, -scanView*np.pi/180, numProfiles)
-    print('Scanning')
+    print('Simulating Scanning...')
     start_time = time()
 
     # multiprocessing on CPU. This program will use ALL of your system's resources. NO MULTITASKING WHILE RUNNING
@@ -297,7 +297,7 @@ if __name__ == '__main__':
 
     for i in range(len(myScans)):
         Plot_Scan(myScans[i][0], myScans[i][1], plotNum=i, plotTrue=False)
-        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/CrankArm22.5d-l_5toe_-0.5cam.txt')
+        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/CrankArm22.5d-r_0.5toe_0.5cam_alt.txt')
 
 
     print(f'Duration: {end_time-start_time:.3f}')

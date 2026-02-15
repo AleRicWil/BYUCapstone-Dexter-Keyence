@@ -39,7 +39,7 @@ def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=Fals
         for key in ['raw_trim', 'inner_bar', 'spindle_coarse', 'spindle_fine']:
             if key not in bboxes:
                 bboxes[key] = full_bbox
-                print(f"Missing '{key}' in provided bboxes. Using unlimited bounds.")
+                print(f"Missing '{key}' in provided bboxes. Using unlimited bounds for this bbox.")
     
     # Load scan data into Crank_Arm_ASSY_LJS640 object
     start = time.time()
@@ -80,11 +80,12 @@ def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=Fals
 
     # Fit axes to bar and spindle
     scan1.fit_bar_faces(plotNum=0, cutoff=bboxes['inner_bar'], show_flag=debug_flag, num_points=1000)
+    scan1.rot_bar_to_zero(debug_flag=debug_flag)
     scan1.fit_spindle_3D(bbox_coarse=bboxes['spindle_coarse'], bbox_fine=bboxes['spindle_fine'], show_flag=debug_flag, 
                          plot_flag=debug_flag, box_size=8.0)
 
     # Process axes direction vectors into toe and camber
-    scan1.calc_toe_camber()
+    scan1.calc_toe_camber2()
     scan1.print_angles()    
     scan1.save_angles_to_csv()
     # if debug_flag: scan1.plot_unit_vectors()

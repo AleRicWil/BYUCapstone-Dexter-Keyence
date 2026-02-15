@@ -802,7 +802,7 @@ class Dexter_Capstone_UI:
         with open(self.arm_database_path, 'r', newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                print(row)
+                # print(row)
                 rows.append(row)
         
         exists = False

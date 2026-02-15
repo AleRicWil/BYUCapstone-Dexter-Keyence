@@ -188,11 +188,12 @@ class Crank_Arm_ASSY_LJS640:
         self.barPrimaryFace = Clean_Bar_Face(self.barPrimaryFace, radius=self.inner_bar_surface_radius)
         if show_flag: print('Showing primary bar face'); self.show_cloud(self.barPrimaryFace)
         barPrimaryPlane, _, _ = Calc_Plane(self.barPrimaryFace, plotNum=plotNum, numPoints=num_points)
-        barPrimaryNormal = barPrimaryPlane[0:3]
+        self.barPrimaryNormal = barPrimaryPlane[0:3] / np.linalg.norm(barPrimaryPlane[0:3])
+        if show_flag: print(f'Inner bar primary surface normal vector: {self.barPrimaryNormal}')
 
         # Find secondary face, which is perpendicular to primary
-        exp_secondary_norm = Rotate(barPrimaryNormal, axis='x', angle=-90.0)
-        barSecondaryFaces = Cloud_Expected_Normal_Filter(barCloud, exp_secondary_norm, 3)   # 3
+        exp_secondary_norm = Rotate(self.barPrimaryNormal, axis='x', angle=-90.0)
+        barSecondaryFaces = Cloud_Expected_Normal_Filter(barCloud, exp_secondary_norm, 10)   # 3
         secondaryLedges, secondaryLedgeAvgs = Find_Ledges_Along_Normal(barSecondaryFaces, normal=exp_secondary_norm, ledgeThreshold=self.ledge_threshold, shortLedge=0.1, closeLedges=self.close_ledges)
         
         # for ledge in secondaryLedges:
@@ -203,16 +204,18 @@ class Crank_Arm_ASSY_LJS640:
         self.barSecondaryFace = Clean_Bar_Face(self.barSecondaryFace, radius=self.inner_bar_surface_radius)
         if show_flag: print('Showing secondary bar face'); self.show_cloud(self.barSecondaryFace)
         barSecondaryPlane, _, _ = Calc_Plane(self.barSecondaryFace, plotNum=plotNum*2, numPoints=num_points)
-        barSecondaryNormal = barSecondaryPlane[0:3]
+        self.barSecondaryNormal = barSecondaryPlane[0:3] / np.linalg.norm(barSecondaryPlane[0:3])
+        if show_flag: print(f'Inner bar secondary surface normal vector: {self.barSecondaryNormal}')
 
         # Bar's axis is the intersection of primary and secondary faces
-        self.bar_axis = np.cross(barPrimaryNormal, barSecondaryNormal)
+        self.bar_axis = np.cross(self.barPrimaryNormal, self.barSecondaryNormal)
         if self.bar_axis[0] < 0:
             self.bar_axis = -self.bar_axis
         self.bar_faces = np.hstack((self.barPrimaryFace, self.barSecondaryFace))
         highest_y_idx = np.argmax(self.bar_faces[1])
         self.bar_faces_highest_point = self.bar_faces[:, highest_y_idx]
         if show_flag:
+            print(f'Bar axis unit vector: {self.bar_axis}')
             print('Showing bar surfaces'); self.show_cloud(np.hstack((self.barPrimaryFace, self.barSecondaryFace)))
 
 #region SPINDLE FIT
@@ -1534,9 +1537,108 @@ class Crank_Arm_ASSY_LJS640:
 
         o3d.visualization.draw_geometries([spindle_pcd, bar_pcd, origin_x, origin_y, origin_z])
 
+    def calc_bar_euler(self):
+        v = self.bar_axis
+        # Ensure it's a unit vector; normalize if necessary (though assumed unit)
+        v = v / np.linalg.norm(v)
+    
+        vx, vy, vz = v
+        theta_z = np.arctan2(vy, np.sqrt(vx**2 + vz**2))
+        theta_y = np.arctan2(-vz, vx)
+        theta_x = 0.0
+        
+        return {'bar_x': theta_x, 'bar_y': theta_y, 'bar_z': theta_z}
+
+    def rot_bar_to_zero(self, debug_flag=False):
+        '''
+        After the bar faces are found and the bar-axis unit vector is computed,
+        rotate the entire point cloud so the unit vector is on global x-axis and
+        the bar faces are rolled to 45-degree diamond, as when stuffed in tube.
+        
+        :param self: Description
+        :param debug_flag: shows intermediate steps for verification
+        '''
+        self.original_bar_axis = self.bar_axis
+        self.bar_euler_xyx = self.calc_bar_euler()
+        x = np.degrees(self.bar_euler_xyx['bar_x'])
+        y = np.degrees(self.bar_euler_xyx['bar_y'])
+        z = np.degrees(self.bar_euler_xyx['bar_z'])
+
+        self.rotate_cloud('z', -z); self.rotate_cloud('y', -y)
+        rot_bar_axis = Rotate(self.bar_axis, 'z', -z)
+        rot_bar_axis = Rotate(rot_bar_axis, 'y', -y)
+        rot_bar_axis = rot_bar_axis / np.linalg.norm(rot_bar_axis)
+        rot_bar_primary_nomal = Rotate(self.barPrimaryNormal, 'z', -z)
+        rot_bar_primary_nomal = Rotate(rot_bar_primary_nomal, 'y', -y)
+        rot_bar_primary_nomal = rot_bar_primary_nomal / np.linalg.norm(rot_bar_primary_nomal)
+        rot_bar_secondary_nomal = Rotate(self.barSecondaryNormal, 'z', -z)
+        rot_bar_secondary_nomal = Rotate(rot_bar_secondary_nomal, 'y', -y)
+        rot_bar_secondary_nomal = rot_bar_secondary_nomal / np.linalg.norm(rot_bar_secondary_nomal)
+        
+        theta_x1 = np.atan2(rot_bar_primary_nomal[1], rot_bar_primary_nomal[2])
+        theta_x2 = np.atan2(rot_bar_secondary_nomal[1], rot_bar_secondary_nomal[2])
+        if debug_flag: 
+            print(f'First rotation bar axis: {rot_bar_axis}')
+            print(f'First rotation bar faces: {rot_bar_primary_nomal}, {rot_bar_secondary_nomal}')
+            print(np.degrees(theta_x1), np.degrees(theta_x2))
+
+        if np.isclose(theta_x1, np.pi/4, atol=0.1745) and np.isclose(theta_x2, -np.pi/4, atol=0.1745):
+            print('Primary Q1, Secondary Q2')
+            diff1 = np.pi/4 - theta_x1
+            diff2 = -np.pi/4 - theta_x2
+        elif np.isclose(theta_x1, -np.pi/4, atol=0.1745) and np.isclose(theta_x2, np.pi/4, atol=0.1745):
+            print('Primary Q2, Secondary Q1')
+            diff1 = -np.pi/4 - theta_x1
+            diff2 = np.pi/4 - theta_x2
+        elif np.isclose(theta_x1, 3*np.pi/4, atol=0.1745) and np.isclose(theta_x2, np.pi/4, atol=0.1745):
+            print('Primary Q4, Secondary Q1')
+            diff1 = 3*np.pi/4 - theta_x1
+            diff2 = np.pi/4 - theta_x2
+        elif np.isclose(theta_x1, np.pi/4, atol=0.1745) and np.isclose(theta_x2, 3*np.pi/4, atol=0.1745):
+            print('Primary Q1, Secondary Q4')
+            diff1 = np.pi/4 - theta_x1
+            diff2 = 3*np.pi/4 - theta_x2
+        elif np.isclose(theta_x1, -3*np.pi/4, atol=0.1745) and np.isclose(theta_x2, 3*np.pi/4, atol=0.1745):
+            print('Primary Q3, Secondary Q4')
+            diff1 = -3*np.pi/4 - theta_x1
+            diff2 = 3*np.pi/4 - theta_x2
+        elif np.isclose(theta_x1, 3*np.pi/4, atol=0.1745) and np.isclose(theta_x2, -3*np.pi/4, atol=0.1745):
+            print('Primary Q4, Secondary Q3')
+            diff1 = 3*np.pi/4 - theta_x1
+            diff2 = -3*np.pi/4 - theta_x2
+        elif np.isclose(theta_x1, -np.pi/4, atol=0.1745) and np.isclose(theta_x2, -3*np.pi/4, atol=0.1745):
+            print('Primary Q2, Secondary Q3')
+            diff1 = -np.pi/4 - theta_x1
+            diff2 = -3*np.pi/4 - theta_x2
+        elif np.isclose(theta_x1, -3*np.pi/4, atol=0.1745) and np.isclose(theta_x2, -np.pi/4, atol=0.1745):
+            print('Primary Q3, Secondary Q2')
+            diff1 = -3*np.pi/4 - theta_x1
+            diff2 = -np.pi/4 - theta_x2
+
+        diff = np.degrees((diff1 + diff2) / 2)
+        self.rotate_cloud('x', -diff)
+        rot_bar_axis = Rotate(rot_bar_axis, 'x', -diff)
+        self.bar_axis = rot_bar_axis / np.linalg.norm(rot_bar_axis)
+        rot_bar_primary_nomal = Rotate(rot_bar_primary_nomal, 'x', -diff)
+        rot_bar_primary_nomal = rot_bar_primary_nomal / np.linalg.norm(rot_bar_primary_nomal)
+        rot_bar_secondary_nomal = Rotate(rot_bar_secondary_nomal, 'x', -diff)
+        rot_bar_secondary_nomal = rot_bar_secondary_nomal / np.linalg.norm(rot_bar_secondary_nomal)
+            
+        theta_x1 = np.atan2(rot_bar_primary_nomal[1], rot_bar_primary_nomal[2])
+        theta_x2 = np.atan2(rot_bar_secondary_nomal[1], rot_bar_secondary_nomal[2])
+        if debug_flag: 
+            print(f'Second rotation bar axis: {self.bar_axis}')
+            print(f'Second rotation bar faces: {rot_bar_primary_nomal}, {rot_bar_secondary_nomal}')
+            print(np.degrees(theta_x1), np.degrees(theta_x2))
+        
+
+        if debug_flag: print("Showing scan aligned to inner bar's axis"); self.show_cloud()
+
+
+
     def calc_toe_camber(self):
         # Bar axis calculations
-        v_x, v_y, v_z = self.bar_axis
+        v_x, v_y, v_z = self.original_bar_axis
         # Toe angle: angle between y-axis and projection on x-y plane
         toe = 90-np.degrees(np.arccos(v_y / np.sqrt(v_x**2 + v_y**2))) if v_x**2 + v_y**2 != 0 else 0
         self.bar_toe = toe if v_x >= 0 else -toe  # Positive v_x: toe-in, negative: toe-out
@@ -1555,7 +1657,7 @@ class Crank_Arm_ASSY_LJS640:
     
         # Calculate spindle toe and camber relative to the bar
         # Normalize bar_axis to define local x-axis
-        u_x = self.bar_axis / np.linalg.norm(self.bar_axis)
+        u_x = self.original_bar_axis / np.linalg.norm(self.original_bar_axis)
 
         # Choose reference vector for defining local y-axis
         ref = np.array([0, 0, 1])
@@ -1604,14 +1706,81 @@ class Crank_Arm_ASSY_LJS640:
         dot_product = np.clip(np.dot(spindle_norm, bar_norm), -1.0, 1.0)  # Avoid numerical errors
         self.total_misalign = np.degrees(np.arccos(dot_product))
 
+    def calc_toe_camber2(self):
+        """
+        Computes toe and camber using the standard definitions for your coordinate system:
+        - Toe:   angle (rotation) of the spindle axis **projected onto the XY plane** relative to the X-axis
+        - Camber: angle of the spindle axis **projected onto the YZ plane** relative to the Z-axis (vertical)
+        
+        Assumes the point cloud has already been rotated so bar_axis ≈ +X (via rot_bar_to_zero() or similar).
+        Uses signed angles via atan2 (positive toe usually = toe-in when viewing from rear; camber sign follows lateral component).
+        """
+        if not hasattr(self, 'spindle_axis') or self.spindle_axis is None:
+            raise ValueError("spindle_axis not computed. Run fit_spindle_3D() first.")
+        
+        # Normalize
+        spindle = self.spindle_axis / np.linalg.norm(self.spindle_axis)
+        sx, sy, sz = spindle
+        
+        # === Toe: projection on XY plane ===
+        xy_norm = np.sqrt(sx**2 + sy**2)
+        if xy_norm > 1e-8:
+            self.toe = np.degrees(np.arctan2(sy, sx))          # signed angle from +X
+            self.spindle_toe = self.toe
+        else:
+            self.toe = 0.0
+            self.spindle_toe = 0.0
+        
+        # === Camber: projection on YZ plane ===
+        xz_norm = np.sqrt(sx**2 + sz**2)
+        if xz_norm > 1e-8:
+            self.camber = 90 - np.degrees(np.arctan2(sx, sz))       # signed angle from +Z
+            self.spindle_camber = self.camber
+        else:
+            self.camber = 0.0
+            self.spindle_camber = 0.0
+
+        # Optional: also compute for bar (should be near zero after alignment)
+        if hasattr(self, 'original_bar_axis') and self.original_bar_axis is not None:
+            bar = self.original_bar_axis / np.linalg.norm(self.original_bar_axis)
+            bx, by, bz = bar
+            
+            bar_xy_norm = np.sqrt(bx**2 + by**2)
+            self.bar_toe = np.degrees(np.arctan2(by, bx)) if bar_xy_norm > 1e-8 else 0.0
+            
+            bar_xz_norm = np.sqrt(bx**2 + bz**2)
+            self.bar_camber = 90 - np.degrees(np.arctan2(bx, bz)) if bar_xz_norm > 1e-8 else 0.0
+        else:
+            self.bar_toe = 0.0
+            self.bar_camber = 0.0
+        
+        if self.side == 'left':
+            self.toe *= -1
+            self.spindle_toe *= -1
+            self.camber *= -1
+            self.spindle_camber *= -1
+            self.bar_toe *= -1
+            self.bar_camber *= -1
+
+
+        self.spindle_align = np.array([self.spindle_toe, self.spindle_camber])
+        self.bar_align = np.array([self.bar_toe, self.bar_camber])
+        # Total misalignment: angle between spindle and bar vectors
+        spindle_norm = self.spindle_axis / np.linalg.norm(self.spindle_axis)
+        bar_norm = self.bar_axis / np.linalg.norm(self.bar_axis)
+        dot_product = np.clip(np.dot(spindle_norm, bar_norm), -1.0, 1.0)  # Avoid numerical errors
+        self.total_misalign = np.degrees(np.arccos(dot_product))
+
+
     def print_angles(self):
         np.set_printoptions(precision=6, suppress=True)
-        print(f'\nBar Axis:\t{self.bar_axis}')
+        print(f'\nOriginal Bar Axis:\t{self.original_bar_axis}')
+        print(f'Rotated Bar Axis:\t{self.bar_axis}')
         print(f'Spindle Axis:\t{self.spindle_axis}')
         np.set_printoptions(precision=4, suppress=True)
-        print(f'\n---DEGREES Toe/Camber---\nBar Global Alignment:\t\t{self.bar_align}')
-        print(f'Spindle Global Alignment:\t{self.spindle_align}')
-        print(f'Spindle/Bar:\t{self.toe:.4f}, {self.camber:.4f}')
+        print(f'\n---DEGREES Toe/Camber---')
+        print(f'Bar Alignment Relative to Scanner:\t\t{self.bar_align}')
+        print(f'Spindle Alignment Relative to Bar:\t{self.spindle_align}')
         print(f'Total Misalignment:\t{self.total_misalign:.4f}')
 
     def save_angles_to_csv(self, csv_filename="angles_output.csv", note="Alignment data for spindle and bar"):
@@ -1920,6 +2089,8 @@ class Axle_Hub_LJS640:
         self.hub_relative_angle = self.hub_angle - self.ref_angle
 
 
+def Normalize_Angle(angle):
+    return np.mod(angle + np.pi, 2*np.pi) - np.pi
 
 def Apply_BBox(cloud, bbox):
     valid_mask = (cloud[0] >= bbox[0]) & (cloud[0] <= bbox[1]) & \
