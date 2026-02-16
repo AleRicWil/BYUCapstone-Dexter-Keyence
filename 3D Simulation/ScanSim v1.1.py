@@ -237,12 +237,15 @@ if __name__ == '__main__':
     # p.show()
 
     # load in stl and orient axes
-    filename = r'STLs\Crank Arm Assembly 22.5d-r_0.5toe_0.5cam.STL'
+    filename = r'STLs\arm_l_22.5_d_0.5_0.5.STL'
     side = 'right'
     myMesh = pv.read(filename)
     myMesh.translate([-myMesh.center[0], -myMesh.center[1], -myMesh.center[2]])
     if side == 'right':
-        myMesh = myMesh.rotate_x(-90).rotate_y(2).rotate_z(3)  # 180, 0, 90 for axle stl
+        # myMesh = myMesh.rotate_x(-90+0).rotate_y(0+0).rotate_z(0+0)
+        # myMesh = myMesh.rotate_x(-90+2).rotate_y(0+2).rotate_z(0+2)
+        # myMesh = myMesh.rotate_x(-90+1).rotate_y(0+5).rotate_z(0+180)
+        myMesh = myMesh.rotate_x(-90+90).rotate_y(0+1).rotate_z(0-1)
     elif side == 'left':
         myMesh = myMesh.rotate_x(-90).rotate_y(180).rotate_z(0)
 
@@ -262,8 +265,8 @@ if __name__ == '__main__':
     myProfiles = []
     myTrueProfiles = []
     numPositions = 3
-    numProfiles = 2001
-    numPoints = 2001
+    numProfiles = 1001
+    numPoints = 1001
     # railView = 30    # degrees. Angular span of rail
     scanView = 15                                                           
     # alphas = np.linspace(railView*np.pi/180, -railView*np.pi/180, numPositions)  # horizontal angles to position scanner
@@ -297,7 +300,7 @@ if __name__ == '__main__':
 
     for i in range(len(myScans)):
         Plot_Scan(myScans[i][0], myScans[i][1], plotNum=i, plotTrue=False)
-        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/CrankArm22.5d-r_0.5toe_0.5cam_alt.txt')
+        Save_Scan(myScans[i][0], f'3D Simulation/SimScans/arm_l_22.5_d_0.5_0.5_D.txt')
 
 
     print(f'Duration: {end_time-start_time:.3f}')

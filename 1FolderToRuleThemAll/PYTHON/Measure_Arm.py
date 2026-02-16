@@ -6,7 +6,7 @@ NO_LIMIT = 2000 # units: mm. bounding box face default value to not trim. max po
 
 # Updates to Measure_Arm.py
 
-def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=False, bboxes_dict=None, rotations_list=None):
+def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=False, bboxes_dict=None, rotations_dict=None):
     """
     Main processing function for crank arm alignment.
     If bboxes_dict is provided, uses those bounding boxes for trimming regions.
@@ -48,10 +48,14 @@ def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=Fals
 
     # Oriented point cloud as it would be on a trailer
     scan1.center_cloud_xy()  # Shift trimmed point cloud to XY center for consistency
-    if rotations_list:
-        for rot in rotations_list:
-            scan1.rotate_cloud(axis=rot['axis'], angle=rot['angle'])
+    if rotations_dict:
+        for rot_set in rotations_dict:
+            x, y, z = rotations_dict[rot_set]
+            scan1.rotate_cloud(axis='x', angle=x)
+            scan1.rotate_cloud(axis='y', angle=y)
+            scan1.rotate_cloud(axis='z', angle=z)
     else:
+        print('No rotations from JSON. Using defaults')
         if scan_type == 'real':
             if side == 'right':
                 scan1.rotate_cloud(axis='z', angle=180)
@@ -100,5 +104,5 @@ def main(filename=None, scan_type='real', side='right', ui=None, debug_flag=Fals
     return results
 
 if __name__ == "__main__":
-    main(filename=r"Scan_Data/Matt_test_arm.csv", side='left', scan_type='real', debug_flag=True)
+    main(filename=r"3D Simulation\SimScans\arm_r_22.5_d_0_0_A.txt", side='right', scan_type='sim', debug_flag=True)
  

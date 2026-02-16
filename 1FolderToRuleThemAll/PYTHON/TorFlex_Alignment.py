@@ -142,6 +142,7 @@ class Crank_Arm_ASSY_LJS640:
             y = data[:,1]
             z = data[:,2]
             self.cloud = np.array([x, y, z])
+            if debug_flag: print('Showing trimmed raw scan. User verify initial trim...'); self.show_cloud()
 
     def _downsample_cloud(self, maxPoints):
         '''Load fewer points for processing by evenly sampling over xy grid'''
@@ -1734,7 +1735,7 @@ class Crank_Arm_ASSY_LJS640:
         # === Camber: projection on YZ plane ===
         xz_norm = np.sqrt(sx**2 + sz**2)
         if xz_norm > 1e-8:
-            self.camber = 90 - np.degrees(np.arctan2(sx, sz))       # signed angle from +Z
+            self.camber = -np.degrees(np.arctan2(sz, sx))       # signed angle from +Z
             self.spindle_camber = self.camber
         else:
             self.camber = 0.0
@@ -1749,7 +1750,7 @@ class Crank_Arm_ASSY_LJS640:
             self.bar_toe = np.degrees(np.arctan2(by, bx)) if bar_xy_norm > 1e-8 else 0.0
             
             bar_xz_norm = np.sqrt(bx**2 + bz**2)
-            self.bar_camber = 90 - np.degrees(np.arctan2(bx, bz)) if bar_xz_norm > 1e-8 else 0.0
+            self.bar_camber = -np.degrees(np.arctan2(bz, bx)) if bar_xz_norm > 1e-8 else 0.0
         else:
             self.bar_toe = 0.0
             self.bar_camber = 0.0
@@ -1757,8 +1758,8 @@ class Crank_Arm_ASSY_LJS640:
         if self.side == 'left':
             self.toe *= -1
             self.spindle_toe *= -1
-            self.camber *= 1
-            self.spindle_camber *= 1
+            self.camber *= -1
+            self.spindle_camber *= -1
             self.bar_toe *= -1
             self.bar_camber *= -1
 

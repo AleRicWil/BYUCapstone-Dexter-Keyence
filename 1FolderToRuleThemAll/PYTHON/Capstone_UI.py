@@ -60,6 +60,7 @@ class Dexter_Capstone_UI:
                     loaded = json.load(f)
                     self.arm_types = {}
                     for k, v in loaded.items():
+                        # print(k, v)
                         self.arm_types[k] = v
             except:
                 print('No valid arm types in .json file')
@@ -665,8 +666,9 @@ class Dexter_Capstone_UI:
             return
         bboxes = arm_type_data.get('bboxes', {})
         rotations = arm_type_data.get('rotations', [])
-        if isinstance(rotations, dict):  # Old format with per-side rotations
-            rotations = rotations.get(self.side, [])
+        print('Rotations: ', rotations)
+        # if isinstance(rotations, dict):  # Old format with per-side rotations
+        #     rotations = rotations.get(self.side, [])
         def content(frame):
             ctk.CTkLabel(frame, text='Calculating crank arm alignment...', font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
         self.setup_screen('Processing Data', content, home_button=False)
@@ -674,7 +676,7 @@ class Dexter_Capstone_UI:
 
         def compute_alignment():
             try:
-                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self, debug_flag=self.debug_flag, bboxes_dict=bboxes, rotations_list=rotations)
+                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self, debug_flag=self.debug_flag, bboxes_dict=bboxes, rotations_dict=rotations)
                 if isinstance(scan_results, dict):
                     self.bar_toe = scan_results.get("bar_toe", "N/A")
                     self.bar_camber = scan_results.get("bar_camber", "N/A")
@@ -725,7 +727,7 @@ class Dexter_Capstone_UI:
 
         def compute_alignment():
             try:
-                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self, bboxes_dict=bboxes, rotations_list=rotations)
+                scan_results = MA.main(self.arm_scan_fileA, self.scan_type, side=self.side, ui=self, bboxes_dict=bboxes, rotations_dict=rotations)
                 if isinstance(scan_results, dict):
                     self.bar_toe = scan_results.get("bar_toe", "N/A")
                     self.bar_camber = scan_results.get("bar_camber", "N/A")
