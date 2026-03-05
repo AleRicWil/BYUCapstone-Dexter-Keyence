@@ -152,8 +152,21 @@ class Dexter_Capstone_UI:
         if self.scan_type != 'real':
             messagebox.showerror("Error", "Scanning is only available for 'real' scan types.")
             return
+        
+        # new block to save multiple scans of the same arm ID, adding user-provided test_num to filename
+        if self.type == 'arm':
+            self.test_num = self.test_num_combo.get() if hasattr(self, 'test_num_combo') else ''
+            if self.test_num and self.test_num != 'None: 00':  # Optional: add more validation, e.g., if not test_num.isdigit(): messagebox.showerror("Error", "Test # must be a number."); return
+                filename = f"{self.selected_arm_type}_{self.test_num}_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.csv"
+            else:
+                filename = f"{self.selected_arm_type}_00_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.csv"
+            
+            self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}\{filename}'
+            os.makedirs(os.path.dirname(self.temp_scan_pathA), exist_ok=True)  # Ensures the directory exists before saving
+
         def content(frame):
             ctk.CTkLabel(frame, text="Scanning...", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(20, 40))
+        
         if self.type == 'hub':
             self.setup_screen("TorFlex Axle — Measure Hub Alignment", content, home_button=False)
         elif self.type == 'arm':
@@ -167,17 +180,6 @@ class Dexter_Capstone_UI:
         # if self.type == 'arm':
         #     self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}\{self.selected_arm_type}_{datetime.now().strftime("%Y-%m-%d_%H%M%S")}.csv'
         # np.savetxt(self.temp_scan_pathA, data, delimiter=',', header='X Y Z')
-        
-        # new block to save multiple scans of the same arm ID, adding user-provided test_num to filename
-        if self.type == 'arm':
-            self.test_num = self.test_num_combo.get() if hasattr(self, 'test_num_combo') else ''
-            if self.test_num and self.test_num != 'None: 00':  # Optional: add more validation, e.g., if not test_num.isdigit(): messagebox.showerror("Error", "Test # must be a number."); return
-                filename = f"{self.selected_arm_type}_{self.test_num}_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.csv"
-            else:
-                filename = f"{self.selected_arm_type}_00_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.csv"
-            
-            self.temp_scan_pathA = fr'C:\Users\Public\CapstoneUI\TempScans\{self.arm_id}\{filename}'
-            os.makedirs(os.path.dirname(self.temp_scan_pathA), exist_ok=True)  # Ensures the directory exists before saving
 
         if self.type == 'hub':
             self.hub_scan_fileA = self.temp_scan_pathA
