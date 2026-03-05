@@ -2269,7 +2269,7 @@ def Calc_Plane(points, title=0, plotNum=0, numPoints=1000, ui=None):
         plane, centroid = fit_plane(filt_points)
         filt_points, stddev = filter_plane(filt_points, plane[0:3], iqr_scale)
         print(f'Plane stddev: {stddev}')
-        if stddev <= 0.015: break
+        if stddev <= 0.050: break
     final_filt_points = filt_points
     if ui:
         ui.log_message(f"\tIteration {i+1}: final {final_filt_points.shape[1]} points")
